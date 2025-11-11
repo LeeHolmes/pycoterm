@@ -295,6 +295,9 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
         self.string_color = QColor(206, 145, 120)   # Orange
         self.comment_color = QColor(106, 153, 85)   # Green
         self.number_color = QColor(181, 206, 168)   # Light green
+        self.operator_color = QColor(212, 212, 212) # Light gray
+        self.function_color = QColor(220, 220, 170) # Light yellow
+        self.variable_color = QColor(156, 220, 254) # Light blue
         
         # Python keywords
         self.keywords = [
@@ -310,7 +313,7 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
         if not self.terminal_widget:
             return True  # Default to highlighting if no terminal widget
             
-        # Check if line starts with prompt indicators
+        # Check if line starts with prompt indicators (including continuation prompts)
         prompt_indicators = [">>> ", "... ", "pyco> "]
         return any(text.startswith(prompt) for prompt in prompt_indicators)
         
@@ -368,7 +371,83 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
                 self.setFormat(input_offset + start, end - start, string_format)
                 index = end
                 
-        # Highlight comments
+        # Highlight numbers (integers, floats, scientific notation)
+        import re
+        number_format = QTextCharFormat()
+        number_format.setForeground(self.number_color)
+        
+        # Match numbers: integers, floats, scientific notation, hex, binary, octal
+        number_pattern = r'\b(?:0[xX][0-9a-fA-F]+|0[bB][01]+|0[oO][0-7]+|\d+\.?\d*(?:[eE][+-]?\d+)?)\b'
+        for match in re.finditer(number_pattern, input_text):
+            self.setFormat(input_offset + match.start(), match.end() - match.start(), number_format)
+        
+        # Highlight operators
+        operator_format = QTextCharFormat()
+        operator_format.setForeground(self.operator_color)
+        operator_format.setFontWeight(QFont.Weight.Bold)
+        
+        # Python operators
+        operators = ['+', '-', '*', '/', '//', '%', '**', '==', '!=', '<', '>', '<=', '>=', 
+                    '=', '+=', '-=', '*=', '/=', '//=', '%=', '**=', '&', '|', '^', '~', 
+                    '<<', '>>', '&=', '|=', '^=', '<<=', '>>=', 'and', 'or', 'not', 'in', 'is']
+        
+        for op in operators:
+            if op.isalpha():  # Skip word operators (already handled in keywords)
+                continue
+            index = 0
+            while index < len(input_text):
+                index = input_text.find(op, index)
+                if index == -1:
+                    break
+                self.setFormat(input_offset + index, len(op), operator_format)
+                index += len(op)
+        
+        # Highlight function calls (word followed by opening parenthesis)
+        function_format = QTextCharFormat()
+        function_format.setForeground(self.function_color)
+        function_format.setFontWeight(QFont.Weight.Bold)
+        
+        function_pattern = r'\b([a-zA-Z_][a-zA-Z0-9_]*)\s*\('
+        for match in re.finditer(function_pattern, input_text):
+            # Only highlight the function name, not the parenthesis
+            func_name = match.group(1)
+            start_pos = match.start(1)
+            self.setFormat(input_offset + start_pos, len(func_name), function_format)
+        
+        # Highlight variables (simple heuristic: words that aren't keywords, functions, or strings)
+        variable_format = QTextCharFormat()
+        variable_format.setForeground(self.variable_color)
+        
+        # Find identifiers that aren't keywords or function calls
+        identifier_pattern = r'\b[a-zA-Z_][a-zA-Z0-9_]*\b'
+        for match in re.finditer(identifier_pattern, input_text):
+            word = match.group()
+            start_pos = match.start()
+            
+            # Skip if it's a keyword
+            if word in self.keywords:
+                continue
+                
+            # Skip if it's followed by '(' (function call, already highlighted)
+            if start_pos + len(word) < len(input_text) and input_text[start_pos + len(word):].lstrip().startswith('('):
+                continue
+                
+            # Skip if it's inside a string (rough check)
+            in_string = False
+            for quote in ['"', "'"]:
+                quote_positions = [i for i, c in enumerate(input_text) if c == quote]
+                for i in range(0, len(quote_positions), 2):
+                    if i + 1 < len(quote_positions):
+                        if quote_positions[i] <= start_pos < quote_positions[i + 1]:
+                            in_string = True
+                            break
+                if in_string:
+                    break
+                    
+            if not in_string:
+                self.setFormat(input_offset + start_pos, len(word), variable_format)
+        
+        # Highlight comments (do this last to override other highlighting)
         comment_format = QTextCharFormat()
         comment_format.setForeground(self.comment_color)
         comment_index = input_text.find('#')
@@ -588,6 +667,7 @@ class TerminalWidget(QTextEdit):
         self.waiting_for_input = False  # Flag when waiting for user input
         self.input_prompt = ""  # Store the input prompt
         self.last_input_cursor_position = None  # Track cursor position in input area
+        self.user_navigated_within_input = False  # Track if user has moved within current input
         
         # Setup syntax highlighting for input
         self.python_highlighter = PythonSyntaxHighlighter(self.document(), self)
@@ -643,6 +723,9 @@ class TerminalWidget(QTextEdit):
         self.last_input_cursor_position = cursor.position()
         self.setTextCursor(cursor)
         
+        # Reset navigation flag for new prompt
+        self.user_navigated_within_input = False
+        
     def append_output_only(self, output: str):
         """Append output without inserting a prompt (used during input requests)"""
         cursor = self.textCursor()
@@ -678,7 +761,14 @@ class TerminalWidget(QTextEdit):
         cursor = self.textCursor()
         cursor.setPosition(self.command_start_position)
         cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
-        return cursor.selectedText()
+        command_text = cursor.selectedText()
+        
+        # Clean up continuation prompts for execution
+        # Replace Qt's paragraph separator with newlines and remove continuation prompts
+        command_text = command_text.replace('\u2029', '\n')  # Qt paragraph separator to newline
+        command_text = command_text.replace('\n... ', '\n')  # Remove continuation prompts
+        
+        return command_text
         
     def set_current_command(self, command: str):
         """Set the current command text"""
@@ -686,7 +776,21 @@ class TerminalWidget(QTextEdit):
         cursor.setPosition(self.command_start_position)
         cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
         cursor.removeSelectedText()
-        cursor.insertText(command)
+        
+        # Handle multi-line commands by adding continuation prompts
+        if '\n' in command:
+            lines = command.split('\n')
+            formatted_command = lines[0]  # First line without prompt
+            for line in lines[1:]:
+                formatted_command += '\n... ' + line  # Add continuation prompt to subsequent lines
+            cursor.insertText(formatted_command)
+        else:
+            cursor.insertText(command)
+        
+        # Ensure the entire command is visible by scrolling to the end
+        cursor.movePosition(QTextCursor.MoveOperation.End)
+        self.setTextCursor(cursor)
+        self.ensureCursorVisible()
         
     def get_completions(self, text: str, cursor_pos: int):
         """Get tab completions for the given text at cursor position"""
@@ -817,7 +921,11 @@ class TerminalWidget(QTextEdit):
         if key == Qt.Key.Key_Return or key == Qt.Key.Key_Enter:
             if prevent_editing:
                 return
-            self.handle_return()
+            # Check for Shift+Enter for multi-line input
+            if modifiers & Qt.KeyboardModifier.ShiftModifier:
+                self.handle_shift_return()
+            else:
+                self.handle_return()
         elif key == Qt.Key.Key_Tab and not self.waiting_for_input:
             if prevent_editing:
                 return
@@ -825,11 +933,27 @@ class TerminalWidget(QTextEdit):
         elif key == Qt.Key.Key_Up and not self.waiting_for_input:
             if prevent_editing:
                 return
-            self.navigate_history(-1)
+            # If user has navigated within input, only do line navigation (no history)
+            if self.user_navigated_within_input:
+                # Store current position before movement
+                old_position = cursor.position()
+                super().keyPressEvent(event)
+                # Check if we moved above the command start - if so, restore position
+                new_cursor = self.textCursor()
+                if new_cursor.position() < self.command_start_position:
+                    new_cursor.setPosition(old_position)
+                    self.setTextCursor(new_cursor)
+            else:
+                self.navigate_history(-1)
         elif key == Qt.Key.Key_Down and not self.waiting_for_input:
             if prevent_editing:
                 return
-            self.navigate_history(1)
+            # If user has navigated within input, only do line navigation (no history)
+            if self.user_navigated_within_input:
+                super().keyPressEvent(event)
+                # No need to check bounds for down movement - it can't go below current input
+            else:
+                self.navigate_history(1)
         elif key == Qt.Key.Key_Home:
             cursor.setPosition(self.command_start_position)
             self.setTextCursor(cursor)
@@ -854,6 +978,18 @@ class TerminalWidget(QTextEdit):
             new_cursor = self.textCursor()
             if new_cursor.position() >= self.command_start_position:
                 self.last_input_cursor_position = new_cursor.position()
+                # Mark that user has navigated within input
+                if self.is_in_multiline_input():
+                    self.user_navigated_within_input = True
+        elif key == Qt.Key.Key_Right:
+            super().keyPressEvent(event)
+            # Update cursor position after move
+            new_cursor = self.textCursor()
+            if new_cursor.position() >= self.command_start_position:
+                self.last_input_cursor_position = new_cursor.position()
+                # Mark that user has navigated within input
+                if self.is_in_multiline_input():
+                    self.user_navigated_within_input = True
         elif modifiers & Qt.KeyboardModifier.ControlModifier:
             if key == Qt.Key.Key_C:
                 self.handle_ctrl_c()
@@ -890,6 +1026,32 @@ class TerminalWidget(QTextEdit):
                     self.last_input_cursor_position = cursor.position()
                 super().keyPressEvent(event)
                 
+    def handle_shift_return(self):
+        """Handle Shift+Enter key press - add a new line for multi-line input"""
+        cursor = self.textCursor()
+        cursor.insertText("\n... ")  # Add continuation prompt
+        self.setTextCursor(cursor)
+        # Mark that we're now in multi-line navigation mode
+        self.user_navigated_within_input = True
+        
+    def is_in_multiline_input(self):
+        """Check if we're currently in a multi-line input (contains continuation prompts)"""
+        # Get the raw text from command start to current cursor position
+        cursor = self.textCursor()
+        temp_cursor = self.textCursor()
+        temp_cursor.setPosition(self.command_start_position)
+        temp_cursor.setPosition(cursor.position(), QTextCursor.MoveMode.KeepAnchor)
+        current_input = temp_cursor.selectedText()
+        
+        # Also check the complete command text
+        full_command = self.get_current_command()
+        
+        # We're in multi-line input if:
+        # 1. The current input contains newlines/continuation prompts, OR
+        # 2. The full command contains continuation prompts
+        return ('\n' in current_input or '\u2029' in current_input or 
+                '\n... ' in current_input or '\n... ' in full_command)
+        
     def handle_return(self):
         """Handle Enter key press"""
         command = self.get_current_command()
@@ -1191,6 +1353,9 @@ class TerminalWidget(QTextEdit):
         elif new_index >= len(self.command_history):
             self.history_index = len(self.command_history)
             self.set_current_command("")
+        
+        # Reset navigation flag when changing to a different command
+        self.user_navigated_within_input = False
 
 class PythonREPLTerminal(QMainWindow):
     """Main application window"""
