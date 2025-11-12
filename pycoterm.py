@@ -65,6 +65,50 @@ class PycoDownloader(QThread):
         except Exception as e:
             self.download_finished.emit(False, f"Download failed: {e}")
 
+class PycoVersionChecker(QThread):
+    """Thread for checking if a new version of pyco is available"""
+    version_check_finished = pyqtSignal(bool, bool)  # success, update_available
+    
+    def __init__(self, install_dir: str):
+        super().__init__()
+        self.install_dir = install_dir
+        self.pyco_url = "https://raw.githubusercontent.com/LeeHolmes/pyco/refs/heads/main/pyco.py"
+        
+    def run(self):
+        """Check if a newer version is available by comparing file content"""
+        try:
+            # Asynchronously ping activity URL (ignore result and errors)
+            try:
+                urllib.request.urlopen("https://www.leeholmes.com/activity/pycoterm_version_check", timeout=5)
+            except:
+                pass  # Ignore any errors from activity URL
+            
+            # Download the current version from GitHub
+            response = urllib.request.urlopen(self.pyco_url, timeout=10)
+            remote_content = response.read().decode('utf-8')
+            remote_content = remote_content.replace('\r\n', '\n').replace('\r', '\n')
+            
+            # Read local version if it exists
+            pyco_path = os.path.join(self.install_dir, "pyco.py")
+            if os.path.exists(pyco_path):
+                with open(pyco_path, 'r', encoding='utf-8') as f:
+                    local_content = f.read()
+                
+                # Normalize both contents for comparison (handle line endings, whitespace)
+                local_normalized = local_content.replace('\r\n', '\n').replace('\r', '\n').strip()
+                remote_normalized = remote_content.strip()
+                
+                # Compare content to see if they're different
+                update_available = remote_normalized != local_normalized
+                self.version_check_finished.emit(True, update_available)
+            else:
+                # No local file means update is needed
+                self.version_check_finished.emit(True, True)
+                
+        except Exception as e:
+            # If check fails, assume no update available to avoid bothering user
+            self.version_check_finished.emit(False, False)
+
 class PythonExecutor(QThread):
     """Thread for executing Python code safely"""
     execution_finished = pyqtSignal(str, bool)  # output, is_error
@@ -1364,9 +1408,51 @@ class PythonREPLTerminal(QMainWindow):
         super().__init__()
         self.install_dir = self.get_app_data_dir()
         self.drag_start_position = None
+        self.update_available = False
+        self.file_menu = None  # Will be set in setup_menus
+        self.update_pyco_action = None  # Will be set in setup_menus
+        
+        # Setup version checker
+        self.version_checker = PycoVersionChecker(self.install_dir)
+        self.version_checker.version_check_finished.connect(self.update_menu_for_version)
+        
         self.setup_ui()
         self.setup_menus()
         self.check_pyco_file()
+    
+    def check_for_updates(self):
+        """Check for pyco updates and update menu appearance if available"""
+        if hasattr(self, 'version_checker') and not self.version_checker.isRunning():
+            self.version_checker.start()
+    
+    def update_menu_for_version(self, success, update_available):
+        """Update status bar and menu based on version check result"""
+        if not success:
+            # If version check failed, don't change anything
+            return
+            
+        self.update_available = update_available
+        if update_available:
+            self.status_label.setText("pyco - update available")
+            # Add update menu item if not already present
+            if self.update_pyco_action not in self.file_menu.actions():
+                # Insert at the beginning of the menu
+                first_action = self.file_menu.actions()[0] if self.file_menu.actions() else None
+                if first_action:
+                    self.file_menu.insertAction(first_action, self.update_pyco_action)
+                    self.update_separator = self.file_menu.insertSeparator(first_action)
+                else:
+                    self.file_menu.addAction(self.update_pyco_action)
+                    self.update_separator = self.file_menu.addSeparator()
+            self.update_pyco_action.setText("Update pyco.py")
+        else:
+            self.status_label.setText("pyco")
+            # Remove update menu item if present
+            if self.update_pyco_action in self.file_menu.actions():
+                self.file_menu.removeAction(self.update_pyco_action)
+                if self.update_separator:
+                    self.file_menu.removeAction(self.update_separator)
+                    self.update_separator = None
         
     def get_app_data_dir(self):
         """Get the cross-platform application data directory"""
@@ -1417,7 +1503,7 @@ class PythonREPLTerminal(QMainWindow):
     def setup_ui(self):
         """Setup the user interface"""
         self.setWindowTitle("pyco - Python Console Terminal")
-        self.setGeometry(100, 100, 480, 510)
+        self.setGeometry(100, 100, 445, 510)
         
         # Remove title bar for retro look
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
@@ -1516,16 +1602,16 @@ class PythonREPLTerminal(QMainWindow):
         
         # Status bar with centered text
         status_bar = self.statusBar()
-        status_label = QLabel("pyco")
-        status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_label = QLabel("pyco")
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # Set old-style font (monospace/typewriter style)
         status_font = QFont("Courier New", 16, QFont.Weight.Bold)
         status_font.setStyleHint(QFont.StyleHint.TypeWriter)
-        status_label.setFont(status_font)
+        self.status_label.setFont(status_font)
         
         # Style the label to match the retro theme
-        status_label.setStyleSheet("""
+        self.status_label.setStyleSheet("""
             QLabel {
                 color: #d4c4a0;
                 background-color: transparent;
@@ -1535,7 +1621,7 @@ class PythonREPLTerminal(QMainWindow):
         
         # Clear any default message and add our custom label
         status_bar.clearMessage()
-        status_bar.addWidget(status_label, 1)  # Stretch factor 1 to center it
+        status_bar.addWidget(self.status_label, 1)  # Stretch factor 1 to center it
         
         # Set focus to terminal
         self.terminal.setFocus()
@@ -1632,6 +1718,9 @@ class PythonREPLTerminal(QMainWindow):
                         self.terminal.append_system_message(clean_output)
                 finally:
                     sys.stdout = old_stdout
+                
+                # Check for updates after successful load
+                self.check_for_updates()
                     
                 return True
             except Exception as e:
@@ -1676,12 +1765,21 @@ class PythonREPLTerminal(QMainWindow):
         self.progress_dialog.hide()
         
         if success:
-            # Automatically load the downloaded pyco.py file
-            if self.load_pyco_file():
-                # File loaded successfully - don't show the loading message
-                pass
+            # Check if this was an update (pyco.py already existed) or initial download
+            pyco_path = os.path.join(self.install_dir, "pyco.py")
+            was_update = not self.terminal.pyco_download_pending  # If not pending initial download, it's an update
+            
+            if was_update:
+                # This was an update - just show message, don't reload
+                self.terminal.append_system_message("Updated pyco. Restart for more happy calculating!\n")
             else:
-                self.terminal.append_system_message("Error: Could not load pyco.py after download\n")
+                # This was initial download - load the file
+                self.terminal.append_system_message(f"✓ {message}\n")
+                if self.load_pyco_file():
+                    # File loaded successfully - don't show the loading message
+                    pass
+                else:
+                    self.terminal.append_system_message("Error: Could not load pyco.py after download\n")
         else:
             self.terminal.append_system_message(f"✗ {message}\n")
             
@@ -1696,30 +1794,30 @@ class PythonREPLTerminal(QMainWindow):
         self.menu_bar = menubar
         
         # File menu
-        file_menu = menubar.addMenu("File")
+        self.file_menu = menubar.addMenu("File")
         
-        # Update pyco action
-        update_pyco_action = QAction("Update pyco.py", self)
-        update_pyco_action.setShortcut(QKeySequence("Ctrl+U"))
-        update_pyco_action.setStatusTip("Download or update pyco.py and README.md from GitHub")
-        update_pyco_action.triggered.connect(self.download_pyco)
-        file_menu.addAction(update_pyco_action)
+        # Create update pyco action but don't add it to menu yet
+        self.update_pyco_action = QAction("Update pyco.py", self)
+        self.update_pyco_action.setShortcut(QKeySequence("Ctrl+U"))
+        self.update_pyco_action.setStatusTip("Download or update pyco.py and README.md from GitHub")
+        self.update_pyco_action.triggered.connect(self.download_pyco)
         
-        file_menu.addSeparator()
+        # Keep track of separator for proper positioning
+        self.update_separator = None
         
         # Clear action
         clear_action = QAction("Clear Terminal", self)
         clear_action.setShortcut(QKeySequence("Ctrl+L"))
         clear_action.triggered.connect(self.clear_terminal)
-        file_menu.addAction(clear_action)
+        self.file_menu.addAction(clear_action)
         
-        file_menu.addSeparator()
+        self.file_menu.addSeparator()
         
         # Exit action
         exit_action = QAction("Exit", self)
         exit_action.setShortcut(QKeySequence("Ctrl+Q"))
         exit_action.triggered.connect(self.close)
-        file_menu.addAction(exit_action)
+        self.file_menu.addAction(exit_action)
         
         # Help menu
         help_menu = menubar.addMenu("Help")
@@ -1875,21 +1973,25 @@ class PythonREPLTerminal(QMainWindow):
             QMessageBox.critical(self, "Error", f"Could not read README.md: {e}")
             return
             
-        readme_dialog = QDialog(self)
-        readme_dialog.setWindowTitle("Pyco Help")
-        readme_dialog.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint)
-        readme_dialog.setFixedSize(700, 500)
+        # Create or reuse help window
+        if not hasattr(self, 'help_window') or self.help_window is None:
+            self.help_window = QDialog()
+            self.help_window.setWindowTitle("Pyco Help")
+            self.help_window.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowTitleHint | Qt.WindowType.WindowCloseButtonHint)
+            self.help_window.resize(700, 500)  # Initial size, but resizable
+            
+            layout = QVBoxLayout(self.help_window)
+            self.help_browser = QTextBrowser()
+            layout.addWidget(self.help_browser)
         
-        layout = QVBoxLayout(readme_dialog)
-        readme_browser = QTextBrowser()
-        
-        # Convert basic markdown to HTML for better display
+        # Update content and show window
         html_content = self.markdown_to_html(readme_content)
-        readme_browser.setHtml(html_content)
+        self.help_browser.setHtml(html_content)
         
-        layout.addWidget(readme_browser)
-        
-        readme_dialog.exec()
+        # Show as non-modal window
+        self.help_window.show()
+        self.help_window.raise_()
+        self.help_window.activateWindow()
         
     def markdown_to_html(self, markdown_text):
         """Convert markdown to HTML with comprehensive support"""
