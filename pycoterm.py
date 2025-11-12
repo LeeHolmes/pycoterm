@@ -1503,7 +1503,7 @@ class PythonREPLTerminal(QMainWindow):
     def setup_ui(self):
         """Setup the user interface"""
         self.setWindowTitle("pyco - Python Console Terminal")
-        self.setGeometry(100, 100, 445, 510)
+        self.setGeometry(100, 100, 460, 510)
         
         # Remove title bar for retro look
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
