@@ -1504,6 +1504,7 @@ class PythonREPLTerminal(QMainWindow):
         """Setup the user interface"""
         self.setWindowTitle("pyco - Python Console Terminal")
         self.setGeometry(100, 100, 460, 510)
+        self.setMinimumWidth(275)
         
         # Remove title bar for retro look
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint)
@@ -1836,27 +1837,47 @@ class PythonREPLTerminal(QMainWindow):
         # Create a single corner widget with both draggable area and power button
         corner_widget = QWidget()
         corner_layout = QHBoxLayout(corner_widget)
-        corner_layout.setContentsMargins(0, 0, 10, 0)
+        corner_layout.setContentsMargins(0, 0, 5, 0)
         corner_layout.setSpacing(0)
-        
-        # Calculate the width needed to span from Help menu to power button
-        # Get the menu bar width and subtract the menu items width
-        menubar_width = self.width() if hasattr(self, 'width') else 800
-        estimated_menus_width = 100  # Approximate width of "File" and "Help" menus
-        button_width = 80  # Larger power button + extra margins and spacing
-        drag_width = max(200, menubar_width - estimated_menus_width - button_width)
         
         # Add large draggable spacer with calculated width
         self.drag_spacer = QWidget()
-        self.drag_spacer.setMinimumWidth(drag_width)
+        self.drag_spacer.setMinimumWidth(self._calculate_drag_spacer_width())
         self.drag_spacer.setStyleSheet("background-color: transparent;")
         self.drag_spacer.mousePressEvent = self.drag_spacer_mouse_press
         self.drag_spacer.mouseMoveEvent = self.drag_spacer_mouse_move
         self.drag_spacer.mouseReleaseEvent = self.drag_spacer_mouse_release
         corner_layout.addWidget(self.drag_spacer)
         
-        # Add spacing before power button
+        # Add spacing before buttons
         corner_layout.addSpacing(15)
+        
+        # Add minimize button
+        minimize_button = QPushButton()
+        minimize_button.setFixedSize(40, 40)
+        minimize_button.setStyleSheet("""
+            QPushButton {
+                background-color: rgb(80, 80, 100);
+                border: 1px solid rgb(50, 50, 70);
+                border-radius: 20px;
+                color: white;
+                font-weight: bold;
+                font-size: 20px;
+                margin: 5px;
+            }
+            QPushButton:hover {
+                background-color: rgb(100, 100, 120);
+            }
+            QPushButton:pressed {
+                background-color: rgb(60, 60, 80);
+            }
+        """)
+        minimize_button.setText("—")
+        minimize_button.clicked.connect(self.showMinimized)
+        corner_layout.addWidget(minimize_button, 0)  # No stretch for the button
+        
+        # Add spacing between buttons
+        corner_layout.addSpacing(5)
         
         # Add power button
         power_button = QPushButton()
@@ -1883,7 +1904,7 @@ class PythonREPLTerminal(QMainWindow):
         corner_layout.addWidget(power_button, 0)  # No stretch for the button
         
         # Add spacing after power button
-        corner_layout.addSpacing(10)
+        corner_layout.addSpacing(5)
         
         menubar.setCornerWidget(corner_widget, Qt.Corner.TopRightCorner)
         
@@ -1921,16 +1942,22 @@ class PythonREPLTerminal(QMainWindow):
             self.drag_start_position = None
             event.accept()
             
+    def _calculate_drag_spacer_width(self):
+        """Calculate the width for the drag spacer based on window and menu dimensions"""
+        menubar_width = self.width() if hasattr(self, 'width') else 800
+        estimated_menus_width = 150  # Approximate width of "File" and "Help" menus with padding
+        button_width = 130  # Minimize button + power button + extra margins and spacing
+        # Use a smaller minimum to allow narrower windows without hiding menus
+        drag_width = max(50, menubar_width - estimated_menus_width - button_width)
+        return drag_width
+    
     def resizeEvent(self, event):
         """Handle window resize to update drag spacer width"""
         super().resizeEvent(event)
         
         # Only update drag spacer width if we're not currently dragging
         if hasattr(self, 'drag_spacer') and self.drag_start_position is None:
-            menubar_width = self.width()
-            estimated_menus_width = 100  # Approximate width of "File" and "Help" menus
-            button_width = 80  # Larger power button + extra margins and spacing
-            drag_width = max(200, menubar_width - estimated_menus_width - button_width)
+            drag_width = self._calculate_drag_spacer_width()
             
             # Only update if the width has changed significantly to avoid unnecessary updates
             current_width = self.drag_spacer.minimumWidth()
