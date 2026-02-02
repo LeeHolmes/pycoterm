@@ -1,0 +1,984 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="theme-color" content="#282828">
+    <meta name="description" content="Your fully featured EDC - Every Day Calculator">
+    <title>pyco</title>
+    <link rel="icon" type="image/x-icon" href="pyco.ico">
+    <link rel="manifest" href="manifest.json">
+    <link rel="apple-touch-icon" href="icons/icon-192.png">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            background-color: #282828;
+            font-family: "Courier New", Consolas, monospace;
+            -webkit-text-size-adjust: 100%;
+            touch-action: manipulation;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            height: 100dvh; /* Dynamic viewport height - adjusts for virtual keyboard */
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        /* Main terminal window */
+        .terminal-window {
+            display: flex;
+            flex-direction: column;
+            flex: 1;
+            border: 5px solid #8a8375;
+            border-radius: 3px;
+            overflow: hidden;
+            box-shadow: 
+                0 0 0 2px #716c5f,
+                0 0 0 4px #5d5848,
+                0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        /* Menu bar */
+        .menu-bar {
+            background-color: #323232;
+            color: #dcdcdc;
+            border-bottom: 1px solid #8a8375;
+            padding: 0;
+            display: flex;
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .menu-item {
+            padding: 8px 12px;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        .menu-item:hover {
+            background-color: #8a8375;
+            color: #ffffff;
+        }
+
+        /* Terminal content area with CRT border layers */
+        .terminal-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #716c5f;
+            padding: 10px;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        /* Multi-layer CRT border effect */
+        .crt-border-outer {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #1b301b;
+            padding: 3px;
+            border-radius: 2px;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .crt-border-mid1 {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #1e3320;
+            padding: 3px;
+            border-radius: 2px;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .crt-border-mid2 {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #213825;
+            padding: 3px;
+            border-radius: 2px;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .crt-border-mid3 {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #243d2a;
+            padding: 3px;
+            border-radius: 2px;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .crt-border-mid4 {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #27422f;
+            padding: 3px;
+            border-radius: 2px;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .crt-border-inner {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: #2a4734;
+            padding: 3px;
+            border-radius: 2px;
+            min-height: 0;
+            overflow: hidden;
+        }
+
+        .repl-container .pyrepl {
+            flex: 1;
+            display: flex !important;
+            flex-direction: column;
+            min-height: 0;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        /* Make xterm terminal fill the container */
+        .pyrepl > div {
+            flex: 1 !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }
+
+        .xterm {
+            flex: 1 !important;
+            height: 100% !important;
+            min-height: 0 !important;
+            touch-action: pan-y; /* Allow vertical scrolling within terminal */
+        }
+
+        .xterm-viewport {
+            height: 100% !important;
+            overflow-y: auto !important;
+            -webkit-overflow-scrolling: touch; /* Smooth scrolling on iOS */
+        }
+
+        .xterm-screen {
+            height: 100% !important;
+        }
+
+        .xterm-helper-textarea {
+            position: absolute !important;
+        }
+
+        /* Prevent page scroll when touching terminal area */
+        .repl-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            height: 100%;
+            overflow: hidden;
+            touch-action: none; /* Prevent default touch handling, let xterm manage it */
+            position: relative;
+        }
+
+        /* CRT scanlines overlay */
+        .repl-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: repeating-linear-gradient(
+                0deg,
+                rgba(0, 0, 0, 0.15) 0px,
+                rgba(0, 0, 0, 0.15) 1px,
+                transparent 1px,
+                transparent 2px
+            );
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        /* Stronger scanlines on mobile */
+        @media (max-width: 768px) {
+            .repl-container::before {
+                background: repeating-linear-gradient(
+                    0deg,
+                    rgba(0, 0, 0, 0.25) 0px,
+                    rgba(0, 0, 0, 0.25) 1px,
+                    transparent 1px,
+                    transparent 3px
+                );
+            }
+        }
+
+        /* CRT vignette/edge shading */
+        .repl-container::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: radial-gradient(
+                ellipse at center,
+                transparent 60%,
+                rgba(0, 0, 0, 0.3) 100%
+            );
+            pointer-events: none;
+            z-index: 11;
+        }
+
+        /* Status bar */
+        .status-bar {
+            background-color: #8a8375;
+            color: #ffffff;
+            padding: 8px 16px;
+            text-align: center;
+            font-size: 16px;
+            font-weight: bold;
+            border-top: 1px solid #8a8375;
+        }
+
+        /* Modal styles for help/about */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background-color: #323232;
+            border: 3px solid #8a8375;
+            border-radius: 5px;
+            max-width: 600px;
+            max-height: 80vh;
+            overflow: auto;
+            color: #dcdcdc;
+            padding: 20px;
+        }
+
+        .modal h2 {
+            color: #00ff00;
+            margin-bottom: 15px;
+            font-family: "Courier New", monospace;
+        }
+
+        .modal p, .modal li {
+            margin-bottom: 10px;
+            line-height: 1.5;
+        }
+
+        .modal ul {
+            margin-left: 20px;
+        }
+
+        .modal-close {
+            background-color: #8a8375;
+            color: white;
+            border: none;
+            padding: 8px 20px;
+            cursor: pointer;
+            font-family: "Courier New", monospace;
+            font-weight: bold;
+            margin-top: 15px;
+        }
+
+        .modal-close:hover {
+            background-color: #9a9385;
+        }
+
+        .keyboard-shortcut {
+            background-color: #1e1e1e;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: "Courier New", monospace;
+        }
+
+        /* Retro keyboard buttons */
+        .keyboard-bar {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            padding: 12px 16px;
+            background: linear-gradient(to bottom, #4a4a4a 0%, #3a3a3a 50%, #2a2a2a 100%);
+            border-top: 2px solid #5a5a5a;
+        }
+
+        .key-btn {
+            font-family: "Courier New", Consolas, monospace;
+            font-size: 11px;
+            font-weight: bold;
+            color: #1a1a1a;
+            background: linear-gradient(to bottom, #d4d4d4 0%, #b8b8b8 20%, #a0a0a0 80%, #888888 100%);
+            border: none;
+            border-radius: 4px;
+            padding: 8px 12px;
+            min-width: 45px;
+            cursor: pointer;
+            box-shadow: 
+                0 4px 0 #555555,
+                0 5px 3px rgba(0, 0, 0, 0.4),
+                inset 0 1px 0 rgba(255, 255, 255, 0.4);
+            text-shadow: 0 1px 0 rgba(255, 255, 255, 0.3);
+            transition: all 0.05s ease;
+            user-select: none;
+        }
+
+        .key-btn:hover {
+            background: linear-gradient(to bottom, #e0e0e0 0%, #c8c8c8 20%, #b0b0b0 80%, #989898 100%);
+        }
+
+        .key-btn:active {
+            background: linear-gradient(to bottom, #a0a0a0 0%, #909090 20%, #808080 80%, #707070 100%);
+            box-shadow: 
+                0 1px 0 #555555,
+                0 2px 2px rgba(0, 0, 0, 0.3),
+                inset 0 1px 2px rgba(0, 0, 0, 0.2);
+            transform: translateY(3px);
+        }
+
+        .key-btn.wide {
+            min-width: 55px;
+        }
+
+        /* Arrow key cluster styling */
+        .key-arrows {
+            display: flex;
+            gap: 4px;
+            margin-left: 8px;
+            padding-left: 12px;
+            border-left: 2px solid #555555;
+        }
+
+        .key-btn.arrow {
+            min-width: 35px;
+            padding: 8px 10px;
+            font-size: 14px;
+        }
+
+        /* Responsive styles for mobile */
+        @media screen and (max-width: 600px) {
+            .container {
+                padding: 5px;
+                max-width: 100%;
+            }
+
+            .terminal-window {
+                border-width: 3px;
+                box-shadow: 
+                    0 0 0 1px #716c5f,
+                    0 0 0 2px #5d5848,
+                    0 0 10px rgba(0, 0, 0, 0.5);
+            }
+
+            .terminal-content {
+                padding: 5px;
+            }
+
+            .crt-border-outer,
+            .crt-border-mid1,
+            .crt-border-mid2,
+            .crt-border-mid3,
+            .crt-border-mid4,
+            .crt-border-inner {
+                padding: 2px;
+            }
+
+            .menu-bar {
+                font-size: 12px;
+            }
+
+            .menu-item {
+                padding: 6px 10px;
+            }
+
+            .status-bar {
+                padding: 6px 12px;
+                font-size: 14px;
+            }
+
+            .keyboard-bar {
+                gap: 4px;
+                padding: 8px 8px;
+                flex-wrap: wrap;
+            }
+
+            .key-btn {
+                font-size: 10px;
+                padding: 6px 8px;
+                min-width: 38px;
+                box-shadow: 
+                    0 3px 0 #555555,
+                    0 4px 2px rgba(0, 0, 0, 0.4),
+                    inset 0 1px 0 rgba(255, 255, 255, 0.4);
+            }
+
+            .key-btn:active {
+                transform: translateY(2px);
+            }
+
+            .key-btn.wide {
+                min-width: 45px;
+            }
+
+            .key-arrows {
+                margin-left: 4px;
+                padding-left: 8px;
+            }
+
+            .key-btn.arrow {
+                min-width: 30px;
+                padding: 6px 8px;
+                font-size: 12px;
+            }
+
+            .modal {
+                margin: 10px;
+                max-width: calc(100% - 20px);
+                padding: 15px;
+            }
+
+            .modal h2 {
+                font-size: 18px;
+            }
+        }
+
+        /* Extra small screens */
+        @media screen and (max-width: 380px) {
+            .keyboard-bar {
+                gap: 3px;
+                padding: 6px 4px;
+            }
+
+            .key-btn {
+                font-size: 9px;
+                padding: 5px 6px;
+                min-width: 32px;
+            }
+
+            .key-btn.wide {
+                min-width: 38px;
+            }
+
+            .key-btn.arrow {
+                min-width: 26px;
+                padding: 5px 6px;
+                font-size: 11px;
+            }
+
+            .key-arrows {
+                margin-left: 2px;
+                padding-left: 6px;
+            }
+        }
+
+        /* Ensure 42 columns fit on mobile by reducing font size */
+        @media screen and (max-width: 600px) {
+            .xterm {
+                font-size: 11px !important;
+            }
+            .container {
+                padding: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="terminal-window">
+            <!-- Menu Bar -->
+            <div class="menu-bar">
+                <div class="menu-item" onclick="window.open('https://github.com/LeeHolmes/pyco/blob/main/README.md', '_blank')">Help</div>
+                <div class="menu-item" onclick="showAbout()">About</div>
+                <div class="menu-item" id="devToolsMenuItem" style="display: none;" onclick="showDevTools()">DevTools</div>
+            </div>
+
+            <!-- Terminal Content with CRT Border Layers -->
+            <div class="terminal-content">
+                <div class="crt-border-outer">
+                    <div class="crt-border-mid1">
+                        <div class="crt-border-mid2">
+                            <div class="crt-border-mid3">
+                                <div class="crt-border-mid4">
+                                    <div class="crt-border-inner">
+                                        <div class="repl-container">
+                                            <div class="pyrepl" 
+                                                 data-theme="pyco-crt"
+                                                 data-title="python"
+                                                 data-header="false"
+                                                 data-buttons="false"
+                                                 data-src="https://raw.githubusercontent.com/LeeHolmes/pyco/main/pyco.py"
+                                                 data-src-output="true"
+                                                 data-startup-message="false">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Status Bar -->
+            <div class="status-bar">pyco</div>
+
+            <!-- Keyboard Buttons -->
+            <div class="keyboard-bar">
+                <button class="key-btn" data-key="escape">ESC</button>
+                <button class="key-btn wide" data-key="home">HOME</button>
+                <button class="key-btn wide" data-key="end">END</button>
+                <button class="key-btn" data-key="tab">TAB</button>
+                <div class="key-arrows">
+                    <button class="key-btn arrow" data-key="left">←</button>
+                    <button class="key-btn arrow" data-key="up">↑</button>
+                    <button class="key-btn arrow" data-key="down">↓</button>
+                    <button class="key-btn arrow" data-key="right">→</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- About Modal -->
+    <div class="modal-overlay" id="aboutModal">
+        <div class="modal">
+            <h2>Pyco - Happy Calculating!</h2>
+            <p><strong>Your fully featured EDC - Every Day Calculator</strong></p>
+            <p>
+                Lee Holmes and Contributors<br>
+                <a href="https://github.com/LeeHolmes/pycoterm" style="color: #00ff00;">https://github.com/LeeHolmes/pycoterm</a>
+            </p>
+            <p style="margin-top: 20px;">
+                Browser-hosted console courtesy of pyrepl-web<br>
+                <a href="https://github.com/savannahostrowski/pyrepl-web" style="color: #00ff00;">https://github.com/savannahostrowski/pyrepl-web</a>
+            </p>
+            <button class="modal-close" onclick="closeAbout()">Close</button>
+        </div>
+    </div>
+
+    <!-- DevTools Modal -->
+    <div class="modal-overlay" id="devToolsModal">
+        <div class="modal" style="width: 90%; max-width: 800px; height: 70vh; display: flex; flex-direction: column;">
+            <h2 style="flex-shrink: 0;">Console Output</h2>
+            <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-shrink: 0;">
+                <button class="modal-close" onclick="copyDevTools()">Copy All</button>
+                <button class="modal-close" onclick="clearDevTools()">Clear</button>
+                <button class="modal-close" onclick="closeDevTools()">Close</button>
+            </div>
+            <pre id="devToolsOutput" style="flex: 1; overflow: auto; background: #1e1e1e; padding: 10px; font-size: 12px; white-space: pre-wrap; word-break: break-all;"></pre>
+        </div>
+    </div>
+
+    <!-- Register custom theme BEFORE loading pyrepl-web -->
+    <script>
+        window.pyreplThemes = {
+            'pyco-crt': {
+                // Terminal colors (xterm.js)
+                background: '#182a18',
+                foreground: '#4ec94e',
+                cursor: '#4ec94e',
+                cursorAccent: '#182a18',
+                selectionBackground: '#008000',
+                black: '#182a18',
+                red: '#ce9178',
+                green: '#6a9955',
+                yellow: '#dcdcaa',
+                blue: '#569cd6',
+                magenta: '#c586c0',
+                cyan: '#9cdcfe',
+                white: '#d4d4d4',
+                brightBlack: '#6a9955',
+                brightRed: '#ce9178',
+                brightGreen: '#4ec94e',
+                brightYellow: '#b5cea8',
+                brightBlue: '#569cd6',
+                brightMagenta: '#c586c0',
+                brightCyan: '#9cdcfe',
+                brightWhite: '#ffffff',
+                headerBackground: '#182a18',
+                headerTitle: '#64c864',
+                
+                // Pygments syntax highlighting style
+                pygmentsStyle: {
+                    background: '#182a18',
+                    styles: {
+                        // Default text
+                        'Token': '#4ec94e',
+                        'Whitespace': '#4ec94e',
+                        
+                        // Comments
+                        'Comment': '#6a9955',
+                        'Comment.Preproc': '#6a9955',
+                        'Comment.Single': '#6a9955',
+                        'Comment.Multiline': '#6a9955',
+                        
+                        // Keywords
+                        'Keyword': 'bold #569cd6',
+                        'Keyword.Constant': '#569cd6',
+                        'Keyword.Declaration': '#569cd6',
+                        'Keyword.Namespace': '#569cd6',
+                        'Keyword.Pseudo': '#569cd6',
+                        'Keyword.Reserved': '#569cd6',
+                        'Keyword.Type': '#569cd6',
+                        
+                        // Operators
+                        'Operator': '#d4d4d4',
+                        'Operator.Word': 'bold #569cd6',
+                        'Punctuation': '#d4d4d4',
+                        
+                        // Names (variables, functions, classes)
+                        'Name': '#9cdcfe',
+                        'Name.Attribute': '#9cdcfe',
+                        'Name.Builtin': '#dcdcaa',
+                        'Name.Builtin.Pseudo': '#9cdcfe',
+                        'Name.Class': '#dcdcaa',
+                        'Name.Constant': '#9cdcfe',
+                        'Name.Decorator': '#dcdcaa',
+                        'Name.Entity': '#9cdcfe',
+                        'Name.Exception': '#dcdcaa',
+                        'Name.Function': '#dcdcaa',
+                        'Name.Function.Magic': '#dcdcaa',
+                        'Name.Property': '#9cdcfe',
+                        'Name.Label': '#9cdcfe',
+                        'Name.Namespace': '#9cdcfe',
+                        'Name.Other': '#9cdcfe',
+                        'Name.Tag': '#569cd6',
+                        'Name.Variable': '#9cdcfe',
+                        'Name.Variable.Class': '#9cdcfe',
+                        'Name.Variable.Global': '#9cdcfe',
+                        'Name.Variable.Instance': '#9cdcfe',
+                        'Name.Variable.Magic': '#9cdcfe',
+                        
+                        // Strings
+                        'String': '#ce9178',
+                        'String.Affix': '#ce9178',
+                        'String.Backtick': '#ce9178',
+                        'String.Char': '#ce9178',
+                        'String.Delimiter': '#ce9178',
+                        'String.Doc': '#6a9955',
+                        'String.Double': '#ce9178',
+                        'String.Escape': '#d7ba7d',
+                        'String.Heredoc': '#ce9178',
+                        'String.Interpol': '#ce9178',
+                        'String.Other': '#ce9178',
+                        'String.Regex': '#d16969',
+                        'String.Single': '#ce9178',
+                        'String.Symbol': '#ce9178',
+                        
+                        // Numbers
+                        'Number': '#b5cea8',
+                        'Number.Bin': '#b5cea8',
+                        'Number.Float': '#b5cea8',
+                        'Number.Hex': '#b5cea8',
+                        'Number.Integer': '#b5cea8',
+                        'Number.Integer.Long': '#b5cea8',
+                        'Number.Oct': '#b5cea8',
+                        
+                        // Literals
+                        'Literal': '#ce9178',
+                        'Literal.Date': '#ce9178',
+                        
+                        // Generic
+                        'Generic': '#4ec94e',
+                        'Generic.Deleted': '#f44747',
+                        'Generic.Emph': 'italic',
+                        'Generic.Error': '#f44747',
+                        'Generic.Heading': 'bold #569cd6',
+                        'Generic.Inserted': '#b5cea8',
+                        'Generic.Output': '#4ec94e',
+                        'Generic.Prompt': '#6a9955',
+                        'Generic.Strong': 'bold',
+                        'Generic.Subheading': '#569cd6',
+                        'Generic.Traceback': '#f44747',
+                        
+                        // Errors
+                        'Error': '#f44747'
+                    }
+                }
+            }
+        };
+
+        // Set font size based on screen width to ensure 42+ columns
+        (function() {
+            const pyrepl = document.querySelector('.pyrepl');
+            if (pyrepl) {
+                // On narrow screens, use smaller font to fit 42 columns
+                const fontSize = window.innerWidth <= 600 ? 11 : 14;
+                pyrepl.dataset.fontSize = fontSize.toString();
+            }
+        })();
+    </script>
+
+    <!-- Load pyrepl-web locally -->
+    <script src="pyrepl.js"></script>
+
+    <script>
+        // Check for debug mode
+        const isDebugMode = new URLSearchParams(window.location.search).get('debug') === '1';
+        
+        // DevTools console capture - only in debug mode
+        const devToolsLogs = [];
+        const originalConsoleLog = console.log;
+        const originalConsoleError = console.error;
+        const originalConsoleWarn = console.warn;
+        
+        if (isDebugMode) {
+            // Show DevTools menu item
+            document.addEventListener('DOMContentLoaded', () => {
+                const menuItem = document.getElementById('devToolsMenuItem');
+                if (menuItem) menuItem.style.display = '';
+            });
+            
+            function addDevToolsEntry(type, args) {
+                const timestamp = new Date().toLocaleTimeString();
+                const message = Array.from(args).map(arg => {
+                    if (typeof arg === 'object') {
+                        try { return JSON.stringify(arg); } catch { return String(arg); }
+                    }
+                    return String(arg);
+                }).join(' ');
+                devToolsLogs.push(`[${timestamp}] [${type}] ${message}`);
+                // Keep only last 500 entries
+                if (devToolsLogs.length > 500) devToolsLogs.shift();
+                // Update display if open
+                const output = document.getElementById('devToolsOutput');
+                if (output) {
+                    output.textContent = devToolsLogs.join('\n');
+                    output.scrollTop = output.scrollHeight;
+                }
+            }
+            
+            console.log = function(...args) {
+                addDevToolsEntry('LOG', args);
+                originalConsoleLog.apply(console, args);
+            };
+            console.error = function(...args) {
+                addDevToolsEntry('ERROR', args);
+                originalConsoleError.apply(console, args);
+            };
+            console.warn = function(...args) {
+                addDevToolsEntry('WARN', args);
+                originalConsoleWarn.apply(console, args);
+            };
+        }
+        
+        // DevTools modal functions
+        function showDevTools() {
+            document.getElementById('devToolsModal').classList.add('active');
+            const output = document.getElementById('devToolsOutput');
+            output.textContent = devToolsLogs.join('\n');
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        function closeDevTools() {
+            document.getElementById('devToolsModal').classList.remove('active');
+        }
+        
+        function clearDevTools() {
+            devToolsLogs.length = 0;
+            document.getElementById('devToolsOutput').textContent = '';
+        }
+        
+        function copyDevTools() {
+            const text = devToolsLogs.join('\n');
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text).catch(() => {
+                    fallbackCopy(text);
+                });
+            } else {
+                fallbackCopy(text);
+            }
+        }
+        
+        function fallbackCopy(text) {
+            // Create a temporary textarea and select its content
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '0';
+            textarea.style.top = '0';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.focus();
+            textarea.select();
+            try {
+                document.execCommand('copy');
+            } catch (e) {
+                // Select the output so user can manually copy
+                const output = document.getElementById('devToolsOutput');
+                const range = document.createRange();
+                range.selectNodeContents(output);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
+                alert('Text selected - use your browser\'s copy function');
+            }
+            document.body.removeChild(textarea);
+        }
+
+        // Modal functions
+        function showAbout() {
+            document.getElementById('aboutModal').classList.add('active');
+        }
+
+        function closeAbout() {
+            document.getElementById('aboutModal').classList.remove('active');
+        }
+
+        // Close modals when clicking outside
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) {
+                    overlay.classList.remove('active');
+                }
+            });
+        });
+
+        // Close modals with Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                document.querySelectorAll('.modal-overlay').forEach(overlay => {
+                    overlay.classList.remove('active');
+                });
+            }
+        });
+
+        // Keyboard button emulation
+        // These should match what a physical keyboard sends so both use the same code path
+        const keySequences = {
+            'escape': '\x1b',           // ESC - same as physical keyboard
+            'home': '\x1b[H',           // Home
+            'end': '\x1b[F',            // End
+            'tab': '\t',                // Tab
+            'left': '\x1b[D',           // Left arrow
+            'right': '\x1b[C',          // Right arrow
+            'up': '\x1b[A',             // Up arrow
+            'down': '\x1b[B'            // Down arrow
+        };
+
+        // Wait for terminal to be ready, then attach button handlers
+        function attachKeyboardButtons() {
+            const pyreplContainer = document.querySelector('.pyrepl');
+            
+            const checkTerminal = setInterval(() => {
+                if (pyreplContainer && pyreplContainer.pyreplConsole) {
+                    clearInterval(checkTerminal);
+                    
+                    // Find the terminal's hidden textarea for refocusing
+                    const termTextarea = pyreplContainer.querySelector('.xterm-helper-textarea');
+                    
+                    document.querySelectorAll('.key-btn').forEach(btn => {
+                        // Prevent buttons from stealing focus (keeps virtual keyboard open)
+                        btn.addEventListener('mousedown', (e) => e.preventDefault());
+                        btn.addEventListener('touchstart', (e) => e.preventDefault(), { passive: false });
+                        
+                        // Track if touch handled the event
+                        let touchHandled = false;
+                        
+                        // Handle key sending - use a shared function
+                        const sendKey = () => {
+                            const key = btn.dataset.key;
+                            const sequence = keySequences[key];
+                            if (sequence && pyreplContainer.pyreplConsole) {
+                                // Send each character of the sequence to the terminal
+                                for (const char of sequence) {
+                                    pyreplContainer.pyreplConsole.push_char(char.charCodeAt(0));
+                                }
+                            }
+                            // Refocus terminal to keep keyboard open
+                            if (termTextarea) {
+                                termTextarea.focus();
+                            }
+                        };
+                        
+                        // On touch devices, handle touchend to send keys before focus can shift
+                        btn.addEventListener('touchend', (e) => {
+                            e.preventDefault();
+                            touchHandled = true;
+                            sendKey();
+                            // Reset flag after a short delay (click fires ~300ms after touchend)
+                            setTimeout(() => { touchHandled = false; }, 400);
+                        }, { passive: false });
+                        
+                        // For mouse/desktop, use click
+                        btn.addEventListener('click', (e) => {
+                            // Skip if touchend already handled this
+                            if (touchHandled) return;
+                            e.preventDefault();
+                            sendKey();
+                        });
+                    });
+                }
+            }, 100);
+        }
+
+        attachKeyboardButtons();
+
+        // Prevent page scroll when touching the terminal area
+        document.querySelector('.repl-container')?.addEventListener('touchmove', (e) => {
+            // Allow the event to propagate to xterm for its own scrolling
+            // but prevent the page from scrolling
+            e.preventDefault();
+        }, { passive: false });
+
+        // Handle visual viewport resize (virtual keyboard on mobile)
+        if (window.visualViewport) {
+            function handleViewportResize() {
+                const container = document.querySelector('.container');
+                if (!container) return;
+                // Set container height to visual viewport height
+                const height = window.visualViewport.height;
+                container.style.height = height + 'px';
+                
+                // Scroll to keep content visible
+                window.scrollTo(0, window.visualViewport.offsetTop);
+            }
+            
+            window.visualViewport.addEventListener('resize', handleViewportResize);
+            window.visualViewport.addEventListener('scroll', handleViewportResize);
+        }
+
+        // Register service worker for PWA support
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js').catch((err) => {
+                console.log('Service worker registration failed:', err);
+            });
+        }
+    </script>
+</body>
+</html>
