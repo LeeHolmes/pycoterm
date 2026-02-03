@@ -1335,13 +1335,78 @@
                         'backspace': '\x7f'
                     };
                     
+                    // Key repeat state for backspace
+                    let repeatInterval = null;
+                    let repeatTimeout = null;
+                    
+                    function stopRepeat() {
+                        if (repeatTimeout) {
+                            clearTimeout(repeatTimeout);
+                            repeatTimeout = null;
+                        }
+                        if (repeatInterval) {
+                            clearInterval(repeatInterval);
+                            repeatInterval = null;
+                        }
+                    }
+                    
                     document.querySelectorAll('.expanded-keyboard-grid .key-btn').forEach(btn => {
-                        btn.addEventListener('mousedown', (e) => e.preventDefault());
+                        btn.addEventListener('mousedown', (e) => {
+                            e.preventDefault();
+                            
+                            // Start key repeat for backspace on mouse
+                            if (btn.dataset.key === 'backspace') {
+                                stopRepeat();
+                                repeatTimeout = setTimeout(() => {
+                                    repeatInterval = setInterval(() => {
+                                        if (pyreplContainer.pyreplConsole) {
+                                            pyreplContainer.pyreplConsole.push_char('\x7f'.charCodeAt(0));
+                                        }
+                                    }, 50);
+                                }, 500);
+                            }
+                        });
+                        
+                        btn.addEventListener('mouseup', () => {
+                            stopRepeat();
+                        });
+                        
+                        btn.addEventListener('mouseleave', () => {
+                            stopRepeat();
+                        });
+                        
                         btn.addEventListener('touchstart', (e) => {
                             e.preventDefault();
                             // Haptic feedback immediately on touch
                             if (navigator.vibrate) navigator.vibrate(10);
+                            
+                            // Start key repeat for backspace
+                            if (btn.dataset.key === 'backspace') {
+                                stopRepeat();
+                                // Initial delay before repeat starts (500ms)
+                                repeatTimeout = setTimeout(() => {
+                                    // Repeat every 50ms
+                                    repeatInterval = setInterval(() => {
+                                        if (pyreplContainer.pyreplConsole) {
+                                            pyreplContainer.pyreplConsole.push_char('\x7f'.charCodeAt(0));
+                                            if (navigator.vibrate) navigator.vibrate(5);
+                                        }
+                                    }, 50);
+                                }, 500);
+                            }
                         }, { passive: false });
+                        
+                        btn.addEventListener('touchend', (e) => {
+                            e.preventDefault();
+                            stopRepeat();
+                            touchHandled = true;
+                            sendInput();
+                            setTimeout(() => { touchHandled = false; }, 400);
+                        }, { passive: false });
+                        
+                        btn.addEventListener('touchcancel', () => {
+                            stopRepeat();
+                        });
                         
                         let touchHandled = false;
                         
@@ -1366,13 +1431,6 @@
                             
                             // Don't focus terminal - we want to keep native keyboard hidden
                         };
-                        
-                        btn.addEventListener('touchend', (e) => {
-                            e.preventDefault();
-                            touchHandled = true;
-                            sendInput();
-                            setTimeout(() => { touchHandled = false; }, 400);
-                        }, { passive: false });
                         
                         btn.addEventListener('click', (e) => {
                             if (touchHandled) return;
