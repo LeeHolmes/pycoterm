@@ -1439,6 +1439,27 @@
                             // Start long press timer
                             longPressTimer = setTimeout(() => {
                                 if (isTouching && !isScrolling) {
+                                    // Check if touch is on the input line (cursor line)
+                                    // If so, don't show overlay - let user paste
+                                    const dims = term.dimensions || term._core?._renderService?.dimensions;
+                                    if (dims) {
+                                        const xtermElement = document.querySelector('.pyrepl .xterm');
+                                        const rect = xtermElement?.getBoundingClientRect();
+                                        if (rect) {
+                                            const xtermStyle = window.getComputedStyle(xtermElement);
+                                            const paddingTop = parseFloat(xtermStyle.paddingTop) || 0;
+                                            const relativeY = touchStartY - rect.top - paddingTop;
+                                            const touchRow = Math.floor(relativeY / dims.css.cell.height);
+                                            const cursorRow = term.buffer.active.cursorY;
+                                            
+                                            // If touching near the cursor line (±1 row), allow paste instead
+                                            if (Math.abs(touchRow - cursorRow) <= 1) {
+                                                isTouching = false;
+                                                return;
+                                            }
+                                        }
+                                    }
+                                    
                                     showTextOverlay(term);
                                     isTouching = false;
                                 }
