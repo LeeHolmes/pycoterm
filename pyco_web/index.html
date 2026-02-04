@@ -174,7 +174,6 @@
             flex: 1 !important;
             height: 100% !important;
             min-height: 0 !important;
-            touch-action: pan-y; /* Allow vertical scrolling within terminal */
         }
 
         .xterm-viewport {
@@ -191,7 +190,6 @@
             position: absolute !important;
         }
 
-        /* Prevent page scroll when touching terminal area */
         .repl-container {
             flex: 1;
             display: flex;
@@ -199,8 +197,39 @@
             min-height: 0;
             height: 100%;
             overflow: hidden;
-            touch-action: none; /* Prevent default touch handling, let xterm manage it */
             position: relative;
+        }
+
+        /* Text selection overlay - shown on long press */
+        .text-selection-overlay {
+            display: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #0a1f0a;
+            z-index: 100;
+            overflow: hidden;
+            -webkit-user-select: text;
+            user-select: text;
+        }
+
+        .text-selection-overlay .text-content {
+            color: #33cc33;
+            white-space: pre;
+            margin: 0;
+            padding: 0;
+            -webkit-user-select: text;
+            user-select: text;
+            font-weight: normal;
+            width: 100%;
+            height: 100%;
+            box-sizing: border-box;
+        }
+
+        .text-selection-overlay.active {
+            display: block;
         }
 
         /* CRT scanlines overlay */
@@ -338,6 +367,7 @@
             background: linear-gradient(to bottom, #4a4a4a 0%, #3a3a3a 50%, #2a2a2a 100%);
             border-top: 2px solid #5a5a5a;
             flex-wrap: nowrap;
+            touch-action: none; /* Prevent page scroll when touching buttons */
         }
 
         .key-btn {
@@ -411,6 +441,7 @@
             border-top: 3px solid #5a5a5a;
             padding: 8px 16px;
             box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.5);
+            touch-action: none; /* Prevent page scroll when touching buttons */
         }
 
         .expanded-keyboard-overlay.active {
@@ -763,6 +794,9 @@
                                                  data-src="https://raw.githubusercontent.com/LeeHolmes/pyco/main/pyco.py"
                                                  data-src-output="true"
                                                  data-startup-message="false">
+                                            </div>
+                                            <div class="text-selection-overlay" id="textSelectionOverlay">
+                                                <div class="text-content"></div>
                                             </div>
                                         </div>
                                     </div>
@@ -1233,12 +1267,263 @@
 
         attachKeyboardButtons();
 
-        // Prevent page scroll when touching the terminal area
-        document.querySelector('.repl-container')?.addEventListener('touchmove', (e) => {
-            // Allow the event to propagate to xterm for its own scrolling
-            // but prevent the page from scrolling
-            e.preventDefault();
-        }, { passive: false });
+        // Touch scrolling for terminal - use xterm's scrollLines API with momentum
+        (function setupTerminalTouchScroll() {
+            const replContainer = document.querySelector('.repl-container');
+            const pyreplContainer = document.querySelector('.pyrepl');
+            const textOverlay = document.getElementById('textSelectionOverlay');
+            const textContent = textOverlay?.querySelector('.text-content');
+            if (!replContainer || !pyreplContainer) return;
+            
+            let touchStartY = 0;
+            let touchStartX = 0;
+            let lastTouchY = 0;
+            let lastTouchTime = 0;
+            let touchStartTime = 0;
+            let isTouching = false;
+            let isScrolling = false; // true once we've determined this is a scroll gesture
+            let accumulatedDelta = 0;
+            let velocity = 0;
+            let momentumFrame = null;
+            let longPressTimer = null;
+            
+            const SCROLL_THRESHOLD = 10; // pixels before we decide it's a scroll
+            const LONG_PRESS_TIME = 500; // ms before we show text selection overlay
+            
+            function showTextOverlay(term) {
+                if (!textOverlay || !textContent) return;
+                
+                const buffer = term.buffer.active;
+                const cols = term.cols;
+                const rows = term.rows;
+                let text = '';
+                
+                // Only get visible lines (viewport)
+                const startRow = buffer.viewportY;
+                const endRow = startRow + rows;
+                
+                for (let i = startRow; i < endRow; i++) {
+                    let lineText = '';
+                    if (i < buffer.length) {
+                        const line = buffer.getLine(i);
+                        if (line) {
+                            lineText = line.translateToString(true);
+                        }
+                    }
+                    // Pad line to full width so clicking anywhere works
+                    // Use non-breaking space so whitespace is rendered and clickable
+                    text += lineText.padEnd(cols).replace(/ /g, '\u00A0') + '\n';
+                }
+                
+                textContent.textContent = text;
+                
+                // Match xterm's exact dimensions
+                // Try public API first, fall back to internal API for older xterm.js versions
+                const dims = term.dimensions || term._core?._renderService?.dimensions;
+                const options = term.options;
+                
+                // Get the actual padding from .xterm element (set by pyrepl-web CSS)
+                const xtermElement = document.querySelector('.pyrepl .xterm');
+                const xtermStyle = xtermElement ? window.getComputedStyle(xtermElement) : null;
+                const xtermPaddingLeft = xtermStyle ? parseFloat(xtermStyle.paddingLeft) : 12;
+                const xtermPaddingTop = xtermStyle ? parseFloat(xtermStyle.paddingTop) : 8;
+                
+                textContent.style.fontFamily = options.fontFamily || 'monospace';
+                textContent.style.fontSize = options.fontSize + 'px';
+                textContent.style.lineHeight = dims.css.cell.height + 'px';
+                textContent.style.fontWeight = '100';
+                textContent.style.letterSpacing = '0px';
+                textContent.style.paddingLeft = xtermPaddingLeft + 'px';
+                textContent.style.paddingTop = xtermPaddingTop + 'px';
+                textContent.style.webkitFontSmoothing = 'antialiased';
+                
+                textOverlay.classList.add('active');
+                
+                // Reset selection tracking
+                hadSelection = false;
+                
+                // Haptic feedback
+                if (navigator.vibrate) navigator.vibrate(50);
+            }
+            
+            function hideTextOverlay() {
+                if (textOverlay) {
+                    textOverlay.classList.remove('active');
+                }
+            }
+            
+            // Close overlay when tapped
+            textOverlay?.addEventListener('click', (e) => {
+                // Don't close if user is selecting text
+                const selection = window.getSelection();
+                if (selection && selection.toString().length > 0) return;
+                hideTextOverlay();
+            });
+            
+            // Auto-close when selection is cleared (user likely copied)
+            let hadSelection = false;
+            document.addEventListener('selectionchange', () => {
+                if (!textOverlay?.classList.contains('active')) return;
+                
+                const selection = window.getSelection();
+                const hasSelection = selection && selection.toString().length > 0;
+                
+                // If we had a selection and now we don't, user probably copied
+                if (hadSelection && !hasSelection) {
+                    hideTextOverlay();
+                    hadSelection = false;
+                } else if (hasSelection) {
+                    hadSelection = true;
+                }
+            });
+            
+            // Wait for pyreplConsole to be ready
+            const waitForTerminal = setInterval(() => {
+                if (pyreplContainer.pyreplConsole?.term) {
+                    clearInterval(waitForTerminal);
+                    
+                    const term = pyreplContainer.pyreplConsole.term;
+                    const lineHeight = 18; // Approximate line height in pixels
+                    
+                    function stopMomentum() {
+                        if (momentumFrame) {
+                            cancelAnimationFrame(momentumFrame);
+                            momentumFrame = null;
+                        }
+                        velocity = 0;
+                    }
+                    
+                    function cancelLongPress() {
+                        if (longPressTimer) {
+                            clearTimeout(longPressTimer);
+                            longPressTimer = null;
+                        }
+                    }
+                    
+                    function applyMomentum() {
+                        if (Math.abs(velocity) < 0.5) {
+                            stopMomentum();
+                            return;
+                        }
+                        
+                        accumulatedDelta += velocity;
+                        const linesToScroll = Math.trunc(accumulatedDelta / lineHeight);
+                        
+                        if (linesToScroll !== 0) {
+                            term.scrollLines(linesToScroll);
+                            accumulatedDelta -= linesToScroll * lineHeight;
+                        }
+                        
+                        // Friction - slow down
+                        velocity *= 0.95;
+                        
+                        momentumFrame = requestAnimationFrame(applyMomentum);
+                    }
+                    
+                    replContainer.addEventListener('touchstart', (e) => {
+                        // Don't handle if overlay is active
+                        if (textOverlay?.classList.contains('active')) return;
+                        
+                        if (e.touches.length === 1) {
+                            stopMomentum();
+                            cancelLongPress();
+                            touchStartY = e.touches[0].clientY;
+                            touchStartX = e.touches[0].clientX;
+                            lastTouchY = touchStartY;
+                            lastTouchTime = Date.now();
+                            touchStartTime = lastTouchTime;
+                            isTouching = true;
+                            isScrolling = false;
+                            accumulatedDelta = 0;
+                            
+                            // Start long press timer
+                            longPressTimer = setTimeout(() => {
+                                if (isTouching && !isScrolling) {
+                                    showTextOverlay(term);
+                                    isTouching = false;
+                                }
+                            }, LONG_PRESS_TIME);
+                        }
+                    }, { passive: true });
+                    
+                    replContainer.addEventListener('touchmove', (e) => {
+                        if (!isTouching || e.touches.length !== 1) return;
+                        
+                        const now = Date.now();
+                        const touchY = e.touches[0].clientY;
+                        const touchX = e.touches[0].clientX;
+                        
+                        // If we haven't decided if this is scrolling yet
+                        if (!isScrolling) {
+                            const deltaFromStartY = Math.abs(touchY - touchStartY);
+                            const deltaFromStartX = Math.abs(touchX - touchStartX);
+                            
+                            // If moved, cancel long press
+                            if (deltaFromStartY > 5 || deltaFromStartX > 5) {
+                                cancelLongPress();
+                            }
+                            
+                            // If moved more horizontally, let it pass through
+                            if (deltaFromStartX > SCROLL_THRESHOLD && deltaFromStartX > deltaFromStartY) {
+                                isTouching = false;
+                                return;
+                            }
+                            
+                            // If moved enough vertically (more than horizontally), it's a scroll
+                            if (deltaFromStartY > SCROLL_THRESHOLD) {
+                                isScrolling = true;
+                                cancelLongPress();
+                            } else {
+                                // Not yet determined, don't interfere
+                                return;
+                            }
+                        }
+                        
+                        const deltaY = lastTouchY - touchY;
+                        const deltaTime = now - lastTouchTime;
+                        
+                        // Calculate velocity (pixels per frame, assuming 16ms frames)
+                        if (deltaTime > 0) {
+                            velocity = (deltaY / deltaTime) * 16;
+                        }
+                        
+                        lastTouchY = touchY;
+                        lastTouchTime = now;
+                        
+                        // Immediate scroll
+                        accumulatedDelta += deltaY;
+                        const linesToScroll = Math.trunc(accumulatedDelta / lineHeight);
+                        
+                        if (linesToScroll !== 0) {
+                            term.scrollLines(linesToScroll);
+                            accumulatedDelta -= linesToScroll * lineHeight;
+                        }
+                        
+                        // Prevent page scroll
+                        e.preventDefault();
+                        e.stopPropagation();
+                    }, { passive: false });
+                    
+                    replContainer.addEventListener('touchend', () => {
+                        cancelLongPress();
+                        const wasScrolling = isScrolling;
+                        isTouching = false;
+                        isScrolling = false;
+                        // Start momentum scrolling if we have velocity and were scrolling
+                        if (wasScrolling && Math.abs(velocity) > 1) {
+                            momentumFrame = requestAnimationFrame(applyMomentum);
+                        }
+                    }, { passive: true });
+                    
+                    replContainer.addEventListener('touchcancel', () => {
+                        cancelLongPress();
+                        isTouching = false;
+                        isScrolling = false;
+                        stopMomentum();
+                    }, { passive: true });
+                }
+            }, 100);
+        })();
 
         // Handle visual viewport resize (virtual keyboard on mobile)
         if (window.visualViewport) {
