@@ -1377,6 +1377,21 @@
                 }
             });
             
+            // Intercept copy to clean up non-breaking spaces
+            textOverlay?.addEventListener('copy', (e) => {
+                const selection = window.getSelection();
+                if (selection) {
+                    // Replace non-breaking spaces with regular spaces and trim each line
+                    const cleanText = selection.toString()
+                        .replace(/\u00A0/g, ' ')
+                        .split('\n')
+                        .map(line => line.trimEnd())
+                        .join('\n');
+                    e.clipboardData.setData('text/plain', cleanText);
+                    e.preventDefault();
+                }
+            });
+            
             // Wait for pyreplConsole to be ready
             const waitForTerminal = setInterval(() => {
                 if (pyreplContainer.pyreplConsole?.term) {
