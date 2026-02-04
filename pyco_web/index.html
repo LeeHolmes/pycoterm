@@ -455,7 +455,7 @@
 
         .expanded-keyboard-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(5, 1fr);
             gap: 6px;
             max-width: 100%;
             margin: 0 auto;
@@ -741,7 +741,7 @@
             }
 
             .expanded-keyboard-grid {
-                grid-template-columns: repeat(4, 1fr);
+                grid-template-columns: repeat(5, 1fr);
                 gap: 4px;
             }
 
@@ -830,33 +830,33 @@
     <!-- Expanded Keyboard Overlay -->
     <div class="expanded-keyboard-overlay" id="expandedKeyboard">
         <div class="expanded-keyboard-grid">
-            <!-- Row 1: Numbers -->
+            <!-- Row 1: C + Numbers -->
+            <button class="key-btn" data-key="ctrl-l">C</button>
             <button class="key-btn" data-char="7">7</button>
             <button class="key-btn" data-char="8">8</button>
             <button class="key-btn" data-char="9">9</button>
             <button class="key-btn" data-char="/">÷</button>
             <!-- Row 2 -->
+            <button class="key-btn" data-key="backspace">⌫</button>
             <button class="key-btn" data-char="4">4</button>
             <button class="key-btn" data-char="5">5</button>
             <button class="key-btn" data-char="6">6</button>
             <button class="key-btn" data-char="*">×</button>
             <!-- Row 3 -->
+            <button class="key-btn" data-char="(">(</button>
             <button class="key-btn" data-char="1">1</button>
             <button class="key-btn" data-char="2">2</button>
             <button class="key-btn" data-char="3">3</button>
             <button class="key-btn" data-char="-">−</button>
             <!-- Row 4 -->
-            <button class="key-btn" data-char="0">0</button>
+            <button class="key-btn" data-char=")">)</button>
             <button class="key-btn" data-char=".">.</button>
+            <button class="key-btn" data-char="0">0</button>
             <button class="key-btn" data-char="-">±</button>
             <button class="key-btn" data-char="+">+</button>
-            <!-- Row 5: Parens, f(x), Backspace -->
-            <button class="key-btn" data-char="(">(</button>
-            <button class="key-btn" data-char=")">)</button>
+            <!-- Row 5: f(x), Enter -->
             <button class="key-btn" id="functionBrowserBtn">f(x)</button>
-            <button class="key-btn" data-key="backspace">⌫</button>
-            <!-- Row 6: Enter -->
-            <button class="key-btn span-4" data-key="enter">⏎</button>
+            <button class="key-btn span-4" data-key="enter">⏎ / =</button>
         </div>
     </div>
 
@@ -1049,6 +1049,16 @@
     <script src="pyrepl.js"></script>
 
     <script>
+        // Prevent page scrolling globally - only allow in specific scrollable areas
+        document.addEventListener('touchmove', (e) => {
+            // Allow scrolling in modals and function list
+            if (e.target.closest('.modal, .function-list, .text-selection-overlay')) {
+                return;
+            }
+            // Prevent page scroll everywhere else
+            e.preventDefault();
+        }, { passive: false });
+        
         // Check for debug mode
         const isDebugMode = new URLSearchParams(window.location.search).get('debug') === '1';
         
@@ -1400,6 +1410,11 @@
                     const term = pyreplContainer.pyreplConsole.term;
                     const lineHeight = 18; // Approximate line height in pixels
                     
+                    // Open expanded keyboard on mobile
+                    if (window.innerWidth <= 600) {
+                        openExpandedKeyboard();
+                    }
+                    
                     function stopMomentum() {
                         if (momentumFrame) {
                             cancelAnimationFrame(momentumFrame);
@@ -1534,11 +1549,7 @@
                             term.scrollLines(linesToScroll);
                             accumulatedDelta -= linesToScroll * lineHeight;
                         }
-                        
-                        // Prevent page scroll
-                        e.preventDefault();
-                        e.stopPropagation();
-                    }, { passive: false });
+                    }, { passive: true });
                     
                     replContainer.addEventListener('touchend', () => {
                         cancelLongPress();
@@ -1653,7 +1664,8 @@
                     const extKeySequences = {
                         ...keySequences,
                         'enter': '\r',
-                        'backspace': '\x7f'
+                        'backspace': '\x7f',
+                        'ctrl-l': '\x0c'  // Ctrl+L (form feed / clear)
                     };
                     
                     // Key repeat state for backspace
