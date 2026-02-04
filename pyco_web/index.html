@@ -1829,13 +1829,13 @@
         }
 
         function parseFunctionResult(jsonResult) {
-            // Parse JSON result from pyreplCall - expects {result: [[name, desc], ...]}
+            // Parse JSON result from pyreplCall - expects {result: [[name, desc, kind], ...]}
             try {
                 const data = JSON.parse(jsonResult);
                 if (data.error || !Array.isArray(data.result)) {
                     return null;
                 }
-                return data.result.map(item => ({ name: item[0], desc: item[1] || '' }));
+                return data.result.map(item => ({ name: item[0], desc: item[1] || '', kind: item[2] || 'function' }));
             } catch (e) {
                 return null;
             }
@@ -1872,8 +1872,9 @@
             functionList.innerHTML = functions.map(f => {
                 // Escape name for use in data attribute
                 const escapedName = f.name.replace(/"/g, '&quot;');
+                const escapedDesc = (f.desc || '').replace(/"/g, '&quot;');
                 return `
-                <div class="function-item" data-name="${escapedName}">
+                <div class="function-item" data-name="${escapedName}" data-desc="${escapedDesc}" data-kind="${f.kind}">
                     <span class="function-item-name">${f.name}</span>
                     ${f.desc ? `<div class="function-item-desc">${f.desc}</div>` : ''}
                 </div>
@@ -1883,18 +1884,30 @@
             functionList.querySelectorAll('.function-item').forEach(item => {
                 item.addEventListener('click', () => {
                     const name = item.dataset.name;
-                    insertFunctionText(name);
+                    const desc = item.dataset.desc || '';
+                    const kind = item.dataset.kind || 'function';
+                    insertFunctionText(name, desc, kind);
                     closeFunctionBrowser();
                 });
             });
         }
 
-        function insertFunctionText(text) {
+        function insertFunctionText(text, desc, kind) {
             const pyreplContainer = document.querySelector('.pyrepl');
             if (!pyreplContainer || !pyreplContainer.pyreplConsole) return;
             
-            // Insert the function name followed by opening paren
-            const toInsert = text + '(';
+            let toInsert;
+            if (kind === 'variable') {
+                // Variable - no parens
+                toInsert = text;
+            } else if (kind === 'function_noargs') {
+                // Function with no arguments - complete both parens
+                toInsert = text + '()';
+            } else {
+                // Function with arguments - just open paren
+                toInsert = text + '(';
+            }
+            
             for (const c of toInsert) {
                 pyreplContainer.pyreplConsole.push_char(c.charCodeAt(0));
             }
