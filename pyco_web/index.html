@@ -91,7 +91,7 @@
             display: flex;
             flex-direction: column;
             background-color: #1b301b;
-            padding: 3px;
+            padding: 2px;
             border-radius: 2px;
             min-height: 0;
             overflow: hidden;
@@ -102,7 +102,7 @@
             display: flex;
             flex-direction: column;
             background-color: #1e3320;
-            padding: 3px;
+            padding: 2px;
             border-radius: 2px;
             min-height: 0;
             overflow: hidden;
@@ -113,7 +113,7 @@
             display: flex;
             flex-direction: column;
             background-color: #213825;
-            padding: 3px;
+            padding: 2px;
             border-radius: 2px;
             min-height: 0;
             overflow: hidden;
@@ -124,7 +124,7 @@
             display: flex;
             flex-direction: column;
             background-color: #243d2a;
-            padding: 3px;
+            padding: 2px;
             border-radius: 2px;
             min-height: 0;
             overflow: hidden;
@@ -135,7 +135,7 @@
             display: flex;
             flex-direction: column;
             background-color: #27422f;
-            padding: 3px;
+            padding: 2px;
             border-radius: 2px;
             min-height: 0;
             overflow: hidden;
@@ -146,7 +146,7 @@
             display: flex;
             flex-direction: column;
             background-color: #2a4734;
-            padding: 3px;
+            padding: 2px;
             border-radius: 2px;
             min-height: 0;
             overflow: hidden;
@@ -174,6 +174,9 @@
             flex: 1 !important;
             height: 100% !important;
             min-height: 0 !important;
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: center !important;
         }
 
         .xterm-viewport {
@@ -213,6 +216,8 @@
             overflow: hidden;
             -webkit-user-select: text;
             user-select: text;
+            touch-action: auto;
+            -webkit-touch-callout: default;
         }
 
         .text-selection-overlay .text-content {
@@ -226,6 +231,35 @@
             width: 100%;
             height: 100%;
             box-sizing: border-box;
+            overflow: auto;
+            -webkit-overflow-scrolling: touch;
+            touch-action: auto;
+            -webkit-touch-callout: default;
+        }
+
+        .text-selection-overlay .text-content * {
+            -webkit-user-select: text !important;
+            user-select: text !important;
+            touch-action: auto !important;
+            -webkit-touch-callout: default !important;
+        }
+
+        /* Style cloned xterm rows in overlay */
+        .text-selection-overlay .xterm-rows {
+            position: static !important;
+            transform: none !important;
+            top: auto !important;
+            left: auto !important;
+        }
+        
+        .text-selection-overlay .xterm-rows > div {
+            position: static !important;
+            top: auto !important;
+            transform: none !important;
+        }
+        
+        .text-selection-overlay .xterm-rows > div > span {
+            letter-spacing: 0 !important;
         }
 
         .text-selection-overlay.active {
@@ -477,6 +511,19 @@
             grid-column: span 4;
         }
 
+        /* Secondary buttons (non-numeric, non-enter) - slightly darker */
+        .key-btn.secondary {
+            background: linear-gradient(to bottom, #b8b8b8 0%, #9c9c9c 20%, #848484 80%, #6c6c6c 100%);
+        }
+
+        .key-btn.secondary:hover {
+            background: linear-gradient(to bottom, #c8c8c8 0%, #acacac 20%, #949494 80%, #7c7c7c 100%);
+        }
+
+        .key-btn.secondary:active {
+            background: linear-gradient(to bottom, #888888 0%, #787878 20%, #686868 80%, #585858 100%);
+        }
+
         /* Function browser modal */
         .function-modal-overlay {
             display: none;
@@ -688,8 +735,8 @@
             }
 
             .expanded-keyboard-grid .key-btn {
-                padding: 14px 6px;
-                font-size: 16px;
+                padding: 6px 4px;
+                font-size: 24px;
             }
 
             .function-modal {
@@ -746,8 +793,8 @@
             }
 
             .expanded-keyboard-grid .key-btn {
-                padding: 12px 4px;
-                font-size: 14px;
+                padding: 4px 2px;
+                font-size: 21px;
             }
 
             .key-arrows {
@@ -831,33 +878,33 @@
     <div class="expanded-keyboard-overlay" id="expandedKeyboard">
         <div class="expanded-keyboard-grid">
             <!-- Row 1: C + Numbers -->
-            <button class="key-btn" data-key="ctrl-l">C</button>
+            <button class="key-btn secondary" data-key="ctrl-l">C</button>
             <button class="key-btn" data-char="7">7</button>
             <button class="key-btn" data-char="8">8</button>
             <button class="key-btn" data-char="9">9</button>
-            <button class="key-btn" data-char="/">÷</button>
+            <button class="key-btn secondary" data-char="/">÷</button>
             <!-- Row 2 -->
-            <button class="key-btn" data-key="backspace">⌫</button>
+            <button class="key-btn secondary" data-key="backspace">⌫</button>
             <button class="key-btn" data-char="4">4</button>
             <button class="key-btn" data-char="5">5</button>
             <button class="key-btn" data-char="6">6</button>
-            <button class="key-btn" data-char="*">×</button>
+            <button class="key-btn secondary" data-char="*">×</button>
             <!-- Row 3 -->
-            <button class="key-btn" data-char="(">(</button>
+            <button class="key-btn secondary" data-char="(">(</button>
             <button class="key-btn" data-char="1">1</button>
             <button class="key-btn" data-char="2">2</button>
             <button class="key-btn" data-char="3">3</button>
-            <button class="key-btn" data-char="-">−</button>
+            <button class="key-btn secondary" data-char="-">−</button>
             <!-- Row 4 -->
-            <button class="key-btn" data-char=")">)</button>
-            <button class="key-btn" data-char=".">.</button>
+            <button class="key-btn secondary" data-char=")">)</button>
+            <button class="key-btn secondary" data-char=".">.</button>
             <button class="key-btn" data-char="0">0</button>
-            <button class="key-btn" data-char="-">±</button>
-            <button class="key-btn" data-char="+">+</button>
+            <button class="key-btn secondary" data-char="-">±</button>
+            <button class="key-btn secondary" data-char="+">+</button>
             <!-- Row 5: f(x), STO, ANS, Enter -->
-            <button class="key-btn" id="functionBrowserBtn">f(x)</button>
-            <button class="key-btn" id="stoBtn">STO</button>
-            <button class="key-btn" id="rclBtn">ANS</button>
+            <button class="key-btn secondary" id="functionBrowserBtn">f(x)</button>
+            <button class="key-btn secondary" id="stoBtn">STO</button>
+            <button class="key-btn secondary" id="rclBtn">ANS</button>
             <button class="key-btn span-2" data-key="enter">⏎ / =</button>
         </div>
     </div>
@@ -1234,7 +1281,7 @@
                         btn.addEventListener('touchstart', (e) => {
                             e.preventDefault();
                             // Haptic feedback immediately on touch
-                            if (navigator.vibrate) navigator.vibrate(10);
+                            if (navigator.vibrate) navigator.vibrate(20);
                         }, { passive: false });
                         
                         // Track if touch handled the event
@@ -1305,49 +1352,80 @@
             function showTextOverlay(term) {
                 if (!textOverlay || !textContent) return;
                 
-                const buffer = term.buffer.active;
-                const cols = term.cols;
-                const rows = term.rows;
-                let text = '';
+                // Get the styled content from xterm-rows
+                const xtermRows = document.querySelector('.pyrepl .xterm-rows');
+                if (!xtermRows) return;
                 
-                // Only get visible lines (viewport)
-                const startRow = buffer.viewportY;
-                const endRow = startRow + rows;
+                // Get the exact position of xterm-rows relative to repl-container
+                const containerRect = replContainer.getBoundingClientRect();
+                const rowsRect = xtermRows.getBoundingClientRect();
+                const offsetTop = rowsRect.top - containerRect.top;
+                const offsetLeft = rowsRect.left - containerRect.left;
                 
-                for (let i = startRow; i < endRow; i++) {
-                    let lineText = '';
-                    if (i < buffer.length) {
-                        const line = buffer.getLine(i);
-                        if (line) {
-                            lineText = line.translateToString(true);
+                // Get xterm font settings from the terminal options
+                const options = term.options;
+                const dims = term.dimensions || term._core?._renderService?.dimensions;
+                const cellHeight = dims ? dims.css.cell.height : (options.fontSize * 1.2);
+                
+                // Clone the entire xterm-rows content
+                const clonedContent = xtermRows.cloneNode(true);
+                
+                // Copy computed colors from original spans to cloned spans FIRST
+                // This is needed because xterm's CSS classes only work inside .xterm context
+                const originalSpans = xtermRows.querySelectorAll('span');
+                const clonedSpans = clonedContent.querySelectorAll('span');
+                originalSpans.forEach((origSpan, i) => {
+                    if (clonedSpans[i]) {
+                        const computedStyle = window.getComputedStyle(origSpan);
+                        clonedSpans[i].style.color = computedStyle.color;
+                        if (computedStyle.fontWeight !== 'normal' && computedStyle.fontWeight !== '400') {
+                            clonedSpans[i].style.fontWeight = computedStyle.fontWeight;
+                        }
+                        if (computedStyle.fontStyle !== 'normal') {
+                            clonedSpans[i].style.fontStyle = computedStyle.fontStyle;
+                        }
+                        clonedSpans[i].style.userSelect = 'text';
+                        clonedSpans[i].style.webkitUserSelect = 'text';
+                        // Replace spaces with NBSP so whitespace is rendered and clickable
+                        if (clonedSpans[i].textContent) {
+                            clonedSpans[i].textContent = clonedSpans[i].textContent.replace(/ /g, '\u00A0');
                         }
                     }
-                    // Pad line to full width so clicking anywhere works
-                    // Use non-breaking space so whitespace is rendered and clickable
-                    text += lineText.padEnd(cols).replace(/ /g, '\u00A0') + '\n';
-                }
+                });
                 
-                textContent.textContent = text;
+                // Fix row heights and pad AFTER copying colors (so span indices match)
+                const cols = term.cols;
+                const clonedRowDivs = clonedContent.querySelectorAll(':scope > div');
+                clonedRowDivs.forEach(rowDiv => {
+                    rowDiv.style.height = cellHeight + 'px';
+                    rowDiv.style.lineHeight = cellHeight + 'px';
+                    rowDiv.style.position = 'static';
+                    rowDiv.style.top = 'auto';
+                    
+                    // Get current text length and pad to full width with NBSP
+                    const currentText = rowDiv.textContent || '';
+                    if (currentText.length < cols) {
+                        const padding = '\u00A0'.repeat(cols - currentText.length);
+                        const paddingSpan = document.createElement('span');
+                        paddingSpan.textContent = padding;
+                        paddingSpan.style.userSelect = 'text';
+                        paddingSpan.style.webkitUserSelect = 'text';
+                        rowDiv.appendChild(paddingSpan);
+                    }
+                });
                 
-                // Match xterm's exact dimensions
-                // Try public API first, fall back to internal API for older xterm.js versions
-                const dims = term.dimensions || term._core?._renderService?.dimensions;
-                const options = term.options;
+                // Make the container selectable
+                clonedContent.style.cssText = 'user-select: text; -webkit-user-select: text; pointer-events: auto; position: static; color: #33cc33;';
                 
-                // Get the actual padding from .xterm element (set by pyrepl-web CSS)
-                const xtermElement = document.querySelector('.pyrepl .xterm');
-                const xtermStyle = xtermElement ? window.getComputedStyle(xtermElement) : null;
-                const xtermPaddingLeft = xtermStyle ? parseFloat(xtermStyle.paddingLeft) : 12;
-                const xtermPaddingTop = xtermStyle ? parseFloat(xtermStyle.paddingTop) : 8;
-                
+                // Replace content - use exact offset from xterm-rows position
+                textContent.innerHTML = '';
                 textContent.style.fontFamily = options.fontFamily || 'monospace';
                 textContent.style.fontSize = options.fontSize + 'px';
-                textContent.style.lineHeight = dims.css.cell.height + 'px';
-                textContent.style.fontWeight = '100';
-                textContent.style.letterSpacing = '0px';
-                textContent.style.paddingLeft = xtermPaddingLeft + 'px';
-                textContent.style.paddingTop = xtermPaddingTop + 'px';
+                textContent.style.lineHeight = cellHeight + 'px';
+                textContent.style.paddingLeft = offsetLeft + 'px';
+                textContent.style.paddingTop = offsetTop + 'px';
                 textContent.style.webkitFontSmoothing = 'antialiased';
+                textContent.appendChild(clonedContent);
                 
                 textOverlay.classList.add('active');
                 
@@ -1355,7 +1433,7 @@
                 hadSelection = false;
                 
                 // Haptic feedback
-                if (navigator.vibrate) navigator.vibrate(50);
+                if (navigator.vibrate) navigator.vibrate(100);
             }
             
             function hideTextOverlay() {
@@ -1633,7 +1711,7 @@
         }
 
         numpadToggle.addEventListener('click', () => {
-            if (navigator.vibrate) navigator.vibrate(10);
+            if (navigator.vibrate) navigator.vibrate(20);
             toggleExpandedKeyboard();
         });
         numpadToggle.addEventListener('touchend', (e) => {
@@ -1713,7 +1791,7 @@
                         btn.addEventListener('touchstart', (e) => {
                             e.preventDefault();
                             // Haptic feedback immediately on touch
-                            if (navigator.vibrate) navigator.vibrate(10);
+                            if (navigator.vibrate) navigator.vibrate(20);
                             
                             // Start key repeat for backspace
                             if (btn.dataset.key === 'backspace') {
@@ -1724,7 +1802,7 @@
                                     repeatInterval = setInterval(() => {
                                         if (pyreplContainer.pyreplConsole) {
                                             pyreplContainer.pyreplConsole.push_char('\x7f'.charCodeAt(0));
-                                            if (navigator.vibrate) navigator.vibrate(5);
+                                            if (navigator.vibrate) navigator.vibrate(10);
                                         }
                                     }, 50);
                                 }, 500);
@@ -1792,7 +1870,7 @@
                         }, 50);
                     };
                     stoBtn?.addEventListener('mousedown', (e) => { e.preventDefault(); });
-                    stoBtn?.addEventListener('touchstart', (e) => { e.preventDefault(); if (navigator.vibrate) navigator.vibrate(10); }, { passive: false });
+                    stoBtn?.addEventListener('touchstart', (e) => { e.preventDefault(); if (navigator.vibrate) navigator.vibrate(20); }, { passive: false });
                     stoBtn?.addEventListener('touchend', (e) => { e.preventDefault(); stoTouchHandled = true; sendSto(); setTimeout(() => { stoTouchHandled = false; }, 400); }, { passive: false });
                     stoBtn?.addEventListener('click', (e) => { if (stoTouchHandled) return; e.preventDefault(); sendSto(); });
                     
@@ -1806,7 +1884,7 @@
                         }
                     };
                     rclBtn?.addEventListener('mousedown', (e) => { e.preventDefault(); });
-                    rclBtn?.addEventListener('touchstart', (e) => { e.preventDefault(); if (navigator.vibrate) navigator.vibrate(10); }, { passive: false });
+                    rclBtn?.addEventListener('touchstart', (e) => { e.preventDefault(); if (navigator.vibrate) navigator.vibrate(20); }, { passive: false });
                     rclBtn?.addEventListener('touchend', (e) => { e.preventDefault(); rclTouchHandled = true; sendRcl(); setTimeout(() => { rclTouchHandled = false; }, 400); }, { passive: false });
                     rclBtn?.addEventListener('click', (e) => { if (rclTouchHandled) return; e.preventDefault(); sendRcl(); });
                 }
