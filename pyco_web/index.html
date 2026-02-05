@@ -854,9 +854,11 @@
             <button class="key-btn" data-char="0">0</button>
             <button class="key-btn" data-char="-">±</button>
             <button class="key-btn" data-char="+">+</button>
-            <!-- Row 5: f(x), Enter -->
+            <!-- Row 5: f(x), STO, ANS, Enter -->
             <button class="key-btn" id="functionBrowserBtn">f(x)</button>
-            <button class="key-btn span-4" data-key="enter">⏎ / =</button>
+            <button class="key-btn" id="stoBtn">STO</button>
+            <button class="key-btn" id="rclBtn">ANS</button>
+            <button class="key-btn span-2" data-key="enter">⏎ / =</button>
         </div>
     </div>
 
@@ -1771,6 +1773,42 @@
                             sendInput();
                         });
                     });
+                    
+                    // STO button: ESC, then "ans = _", then ENTER
+                    const stoBtn = document.getElementById('stoBtn');
+                    let stoTouchHandled = false;
+                    const sendSto = () => {
+                        if (!pyreplContainer.pyreplConsole) return;
+                        // Send ESC to clear current line
+                        pyreplContainer.pyreplConsole.push_char(0x1b);
+                        // Small delay to avoid ESC+a being interpreted as escape sequence
+                        setTimeout(() => {
+                            // Send "ans = _"
+                            for (const c of 'ans = _') {
+                                pyreplContainer.pyreplConsole.push_char(c.charCodeAt(0));
+                            }
+                            // Send ENTER
+                            pyreplContainer.pyreplConsole.push_char('\r'.charCodeAt(0));
+                        }, 50);
+                    };
+                    stoBtn?.addEventListener('mousedown', (e) => { e.preventDefault(); });
+                    stoBtn?.addEventListener('touchstart', (e) => { e.preventDefault(); if (navigator.vibrate) navigator.vibrate(10); }, { passive: false });
+                    stoBtn?.addEventListener('touchend', (e) => { e.preventDefault(); stoTouchHandled = true; sendSto(); setTimeout(() => { stoTouchHandled = false; }, 400); }, { passive: false });
+                    stoBtn?.addEventListener('click', (e) => { if (stoTouchHandled) return; e.preventDefault(); sendSto(); });
+                    
+                    // RCL button: insert "ans"
+                    const rclBtn = document.getElementById('rclBtn');
+                    let rclTouchHandled = false;
+                    const sendRcl = () => {
+                        if (!pyreplContainer.pyreplConsole) return;
+                        for (const c of 'ans') {
+                            pyreplContainer.pyreplConsole.push_char(c.charCodeAt(0));
+                        }
+                    };
+                    rclBtn?.addEventListener('mousedown', (e) => { e.preventDefault(); });
+                    rclBtn?.addEventListener('touchstart', (e) => { e.preventDefault(); if (navigator.vibrate) navigator.vibrate(10); }, { passive: false });
+                    rclBtn?.addEventListener('touchend', (e) => { e.preventDefault(); rclTouchHandled = true; sendRcl(); setTimeout(() => { rclTouchHandled = false; }, 400); }, { passive: false });
+                    rclBtn?.addEventListener('click', (e) => { if (rclTouchHandled) return; e.preventDefault(); sendRcl(); });
                 }
             }, 100);
         }
