@@ -669,6 +669,62 @@
             color: #4ec94e;
         }
 
+        /* History section headers and layout */
+        .history-section {
+            margin-bottom: 8px;
+        }
+
+        .history-section-header {
+            font-family: "Courier New", monospace;
+            font-size: 11px;
+            font-weight: bold;
+            color: #888;
+            text-transform: uppercase;
+            padding: 8px 12px 4px 12px;
+            background-color: #252525;
+            border-bottom: 1px solid #3a3a3a;
+        }
+
+        /* Saved variables row (compact buttons for ans, var1-var9) */
+        .saved-vars-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            padding: 8px 12px;
+            background-color: #2a3a2a;
+        }
+
+        .saved-var-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 6px 10px;
+            background: linear-gradient(to bottom, #3a4a3a 0%, #2a3a2a 100%);
+            border: 1px solid #4a5a4a;
+            border-radius: 4px;
+            cursor: pointer;
+            min-width: 50px;
+        }
+
+        .saved-var-btn:hover {
+            background: linear-gradient(to bottom, #4a5a4a 0%, #3a4a3a 100%);
+            border-color: #4ec94e;
+        }
+
+        .saved-var-name {
+            font-family: "Courier New", monospace;
+            font-size: 14px;
+            font-weight: bold;
+            color: #4ec94e;
+        }
+
+        .saved-var-value {
+            font-family: "Courier New", monospace;
+            font-size: 10px;
+            color: #888;
+            margin-top: 2px;
+        }
+
         .history-line {
             display: flex;
             gap: 8px;
@@ -695,6 +751,61 @@
             font-family: "Courier New", monospace;
             padding-left: 43px;
             margin-top: 2px;
+        }
+
+        /* Store modal grid */
+        .store-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            padding: 12px;
+        }
+
+        .store-modal-value {
+            font-family: "Courier New", monospace;
+            font-size: 14px;
+            color: #888;
+            margin-top: 6px;
+            word-break: break-all;
+        }
+
+        .store-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 12px 8px;
+            background: linear-gradient(to bottom, #3a3a3a 0%, #2a2a2a 100%);
+            border: 2px solid #555;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .store-btn:hover {
+            background: linear-gradient(to bottom, #4a4a4a 0%, #3a3a3a 100%);
+            border-color: #4ec94e;
+        }
+
+        .store-btn:active {
+            background: linear-gradient(to bottom, #2a2a2a 0%, #1a1a1a 100%);
+        }
+
+        .store-btn-var {
+            font-family: "Courier New", monospace;
+            font-size: 20px;
+            font-weight: bold;
+            color: #4ec94e;
+        }
+
+        .store-btn-value {
+            font-family: "Courier New", monospace;
+            font-size: 11px;
+            color: #888;
+            margin-top: 4px;
+            max-width: 80px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
         }
 
         /* Responsive styles for mobile */
@@ -951,7 +1062,7 @@
             <!-- Row 5: f(x), STO, ANS, Enter -->
             <button class="key-btn secondary" id="functionBrowserBtn">f(x)</button>
             <button class="key-btn secondary" id="stoBtn">STO</button>
-            <button class="key-btn secondary" id="rclBtn">ANS</button>
+            <button class="key-btn secondary" id="rclBtn">VAR</button>
             <button class="key-btn span-2" data-key="enter">⏎ / =</button>
         </div>
     </div>
@@ -985,6 +1096,22 @@
             </div>
             <div class="function-modal-footer">
                 <button class="function-modal-close" id="historyModalClose">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Store Modal -->
+    <div class="function-modal-overlay" id="storeModal">
+        <div class="function-modal">
+            <div class="function-modal-header">
+                <h3 id="storeModalTitle">Store into:</h3>
+                <div id="storeModalValue" class="store-modal-value"></div>
+            </div>
+            <div class="store-grid" id="storeGrid">
+                <!-- Buttons for ans, var1-var8 will be generated dynamically -->
+            </div>
+            <div class="function-modal-footer">
+                <button class="function-modal-close" id="storeModalClose">Cancel</button>
             </div>
         </div>
     </div>
@@ -1304,6 +1431,18 @@
                 const funcModal = document.getElementById('functionModal');
                 if (funcModal && funcModal.classList.contains('active')) {
                     funcModal.classList.remove('active');
+                    return;
+                }
+                // Close store modal
+                const stoModal = document.getElementById('storeModal');
+                if (stoModal && stoModal.classList.contains('active')) {
+                    stoModal.classList.remove('active');
+                    return;
+                }
+                // Close history modal
+                const histModal = document.getElementById('historyModal');
+                if (histModal && histModal.classList.contains('active')) {
+                    histModal.classList.remove('active');
                     return;
                 }
                 // Close other modals
@@ -1914,27 +2053,30 @@
                         });
                     });
                     
-                    // STO button: ESC, then "ans = _", then ENTER
+                    // STO button: Check for pending input, show store modal
                     const stoBtn = document.getElementById('stoBtn');
                     let stoTouchHandled = false;
-                    const sendSto = () => {
+                    const handleSto = () => {
                         if (!pyreplContainer.pyreplConsole) return;
-                        // Send ESC to clear current line
-                        pyreplContainer.pyreplConsole.push_char(0x1b);
-                        // Small delay to avoid ESC+a being interpreted as escape sequence
-                        setTimeout(() => {
-                            // Send "ans = _"
-                            for (const c of 'ans = _') {
-                                pyreplContainer.pyreplConsole.push_char(c.charCodeAt(0));
+                        
+                        // Check if there's pending input on the current line
+                        const currentInput = getCurrentLineInput();
+                        
+                        if (currentInput) {
+                            // There's input - show the store modal with the input value
+                            openStoreModal(currentInput);
+                        } else {
+                            // No input - get the last result and show store modal
+                            const lastResult = getLastResultValue();
+                            if (lastResult) {
+                                openStoreModal('_', lastResult, true);
                             }
-                            // Send ENTER
-                            pyreplContainer.pyreplConsole.push_char('\r'.charCodeAt(0));
-                        }, 50);
+                        }
                     };
                     stoBtn?.addEventListener('mousedown', (e) => { e.preventDefault(); });
                     stoBtn?.addEventListener('touchstart', (e) => { e.preventDefault(); if (navigator.vibrate) navigator.vibrate(20); }, { passive: false });
-                    stoBtn?.addEventListener('touchend', (e) => { e.preventDefault(); stoTouchHandled = true; sendSto(); setTimeout(() => { stoTouchHandled = false; }, 400); }, { passive: false });
-                    stoBtn?.addEventListener('click', (e) => { if (stoTouchHandled) return; e.preventDefault(); sendSto(); });
+                    stoBtn?.addEventListener('touchend', (e) => { e.preventDefault(); stoTouchHandled = true; handleSto(); setTimeout(() => { stoTouchHandled = false; }, 400); }, { passive: false });
+                    stoBtn?.addEventListener('click', (e) => { if (stoTouchHandled) return; e.preventDefault(); handleSto(); });
                     
                     // RCL button: opens history modal
                     const rclBtn = document.getElementById('rclBtn');
@@ -1949,6 +2091,148 @@
         }
 
         attachExpandedKeyboardHandlers();
+
+        // Store modal
+        const storeModal = document.getElementById('storeModal');
+        const storeModalTitle = document.getElementById('storeModalTitle');
+        const storeGrid = document.getElementById('storeGrid');
+        const storeModalClose = document.getElementById('storeModalClose');
+        let pendingStoreValue = '';
+
+        function getCurrentLineInput() {
+            // Get the current input from the terminal's cursor line
+            const pyreplContainer = document.querySelector('.pyrepl');
+            if (!pyreplContainer?.pyreplConsole?.term) return '';
+            
+            const term = pyreplContainer.pyreplConsole.term;
+            const buffer = term.buffer.active;
+            // cursorY is relative to viewport, add baseY to get absolute line in buffer
+            const absoluteY = buffer.baseY + buffer.cursorY;
+            const line = buffer.getLine(absoluteY);
+            if (!line) return '';
+            
+            let text = line.translateToString(true);
+            // Check if this looks like an input line (contains >>> or ... prompt)
+            // The prompt may have leading spaces or other formatting
+            const promptMatch = text.match(/(>>>|\.\.\.)\s*/);
+            if (!promptMatch) return '';  // Not an input line
+            
+            // Get everything after the prompt
+            const promptEnd = promptMatch.index + promptMatch[0].length;
+            text = text.substring(promptEnd);
+            return text.trim();
+        }
+
+        function getLastResultValue() {
+            // Get the value of the last result (_)
+            if (!window.pyreplGet) return null;
+            
+            try {
+                const result = window.pyreplGet('_');
+                const data = JSON.parse(result);
+                if (data.error || data.result === undefined) return null;
+                const val = data.result;
+                return typeof val === 'string' ? `'${val}'` : String(val);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function truncateMiddle(str, maxLen) {
+            if (str.length <= maxLen) return str;
+            const ellipsis = '…';
+            const charsToShow = maxLen - ellipsis.length;
+            const frontChars = Math.ceil(charsToShow / 2);
+            const backChars = Math.floor(charsToShow / 2);
+            return str.substring(0, frontChars) + ellipsis + str.substring(str.length - backChars);
+        }
+
+        function openStoreModal(valueToStore, displayValue, isLastResult) {
+            pendingStoreValue = valueToStore;
+            const display = displayValue || valueToStore;
+            const storeModalValue = document.getElementById('storeModalValue');
+            if (isLastResult) {
+                const truncated = truncateMiddle(display, 15);
+                storeModalTitle.textContent = `Store last result (${truncated}) into:`;
+                storeModalValue.style.display = 'none';
+            } else {
+                storeModalTitle.textContent = `Store ${display} into:`;
+                storeModalValue.style.display = 'none';
+            }
+            renderStoreGrid();
+            storeModal.classList.add('active');
+        }
+
+        function closeStoreModal() {
+            storeModal.classList.remove('active');
+            pendingStoreValue = '';
+        }
+
+        function renderStoreGrid() {
+            const variables = ['ans', 'var1', 'var2', 'var3', 'var4', 'var5', 'var6', 'var7', 'var8'];
+            let html = '';
+            
+            for (const varName of variables) {
+                let currentValue = '(empty)';
+                if (window.pyreplGet) {
+                    try {
+                        const result = window.pyreplGet(varName);
+                        const data = JSON.parse(result);
+                        if (!data.error && data.result !== undefined) {
+                            const val = data.result;
+                            currentValue = typeof val === 'string' ? `'${val}'` : String(val);
+                            if (currentValue.length > 10) {
+                                currentValue = currentValue.substring(0, 9) + '…';
+                            }
+                        }
+                    } catch (e) {}
+                }
+                
+                html += `
+                    <button class="store-btn" data-var="${varName}">
+                        <span class="store-btn-var">${varName}</span>
+                        <span class="store-btn-value">${escapeHtml(currentValue)}</span>
+                    </button>
+                `;
+            }
+            
+            storeGrid.innerHTML = html;
+            
+            // Add click handlers
+            storeGrid.querySelectorAll('.store-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const varName = btn.dataset.var;
+                    storeValueInto(varName);
+                    closeStoreModal();
+                });
+            });
+        }
+
+        function storeValueInto(varName) {
+            const pyreplContainer = document.querySelector('.pyrepl');
+            if (!pyreplContainer?.pyreplConsole) return;
+            
+            // Capture the value before any async operations
+            const valueToStore = pendingStoreValue;
+            
+            // Send ESC to clear current line
+            pyreplContainer.pyreplConsole.push_char(0x1b);
+            
+            setTimeout(() => {
+                // Send "a = <value>"
+                const assignment = `${varName} = ${valueToStore}`;
+                for (const c of assignment) {
+                    pyreplContainer.pyreplConsole.push_char(c.charCodeAt(0));
+                }
+                // Send ENTER
+                pyreplContainer.pyreplConsole.push_char('\r'.charCodeAt(0));
+            }, 50);
+        }
+
+        storeModalClose?.addEventListener('click', closeStoreModal);
+        storeModal?.addEventListener('click', (e) => {
+            if (e.target === storeModal) closeStoreModal();
+        });
 
         // History modal
         const historyModal = document.getElementById('historyModal');
@@ -2003,61 +2287,84 @@
             }
         }
 
-        function getAnsValue() {
-            // Get the value of 'ans' variable from Python
-            if (!window.pyreplGet) return null;
+        function getSavedVariables() {
+            // Get variables ans, var1-var8 that have been set by the user
+            const variables = ['ans', 'var1', 'var2', 'var3', 'var4', 'var5', 'var6', 'var7', 'var8'];
+            const saved = [];
             
-            try {
-                const jsonResult = window.pyreplGet('ans');
-                const data = JSON.parse(jsonResult);
-                if (data.error || data.result === null) {
-                    return null;
-                }
-                // Convert value to string representation
-                const value = data.result;
-                return typeof value === 'string' ? `'${value}'` : String(value);
-            } catch (e) {
-                return null;
+            if (!window.pyreplGet) return saved;
+            
+            for (const varName of variables) {
+                try {
+                    const result = window.pyreplGet(varName);
+                    const data = JSON.parse(result);
+                    if (!data.error && data.result !== undefined) {
+                        const val = data.result;
+                        const value = typeof val === 'string' ? `'${val}'` : String(val);
+                        saved.push([varName, value]);
+                    }
+                } catch (e) {}
             }
+            
+            return saved;
         }
 
         function renderHistoryList() {
             const numberedResults = getNumberedResults();
-            const ansValue = getAnsValue();
+            const savedVars = getSavedVariables();
             
             let html = '';
             
-            // Show 'ans' row if ans has been set
-            if (ansValue && ansValue !== 'None') {
-                html += `
-                    <div class="function-item history-item ans-row" data-var="ans">
-                        <div class="history-line">
-                            <span class="history-var">ans</span>
-                        </div>
-                        <div class="history-result">= ${escapeHtml(ansValue)}</div>
-                    </div>
-                `;
+            // Saved section (ans and var1-var8)
+            if (savedVars.length > 0) {
+                html += '<div class="history-section">';
+                html += '<div class="history-section-header">Saved</div>';
+                html += '<div class="saved-vars-row">';
+                
+                // Show saved variables (ans, var1-var8)
+                for (const [varName, value] of savedVars) {
+                    const displayValue = value.length > 8 ? value.substring(0, 7) + '…' : value;
+                    html += `<button class="saved-var-btn" data-var="${varName}"><span class="saved-var-name">${varName}</span><span class="saved-var-value">${escapeHtml(displayValue)}</span></button>`;
+                }
+                
+                html += '</div></div>';
             }
             
-            if (numberedResults.length === 0 && !html) {
+            if (numberedResults.length === 0 && savedVars.length === 0) {
                 historyList.innerHTML = '<div class="function-loading">No history yet</div>';
                 return;
             }
 
-            // Then show all numbered results in order
-            html += numberedResults.map(([varName, command, value]) => `
-                <div class="function-item history-item" data-var="${escapeHtml(varName)}">
-                    <div class="history-line">
-                        <span class="history-var">${escapeHtml(varName)}</span>
-                        <span class="history-expression">${escapeHtml(command)}</span>
+            // Automatic section (numbered results)
+            if (numberedResults.length > 0) {
+                html += '<div class="history-section">';
+                html += '<div class="history-section-header">Automatic</div>';
+                html += numberedResults.map(([varName, command, value]) => `
+                    <div class="function-item history-item" data-var="${escapeHtml(varName)}">
+                        <div class="history-line">
+                            <span class="history-var">${escapeHtml(varName)}</span>
+                            <span class="history-expression">${escapeHtml(truncateMiddle(command, 25))}</span>
+                        </div>
+                        <div class="history-result">= ${escapeHtml(truncateMiddle(value, 30))}</div>
                     </div>
-                    <div class="history-result">= ${escapeHtml(value)}</div>
-                </div>
-            `).join('');
+                `).join('');
+                html += '</div>';
+            }
 
             historyList.innerHTML = html;
 
-            // Add click handlers
+            // Add click handlers for saved variable buttons
+            historyList.querySelectorAll('.saved-var-btn').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const varName = btn.dataset.var;
+                    if (varName) {
+                        insertResult(varName);
+                    }
+                    closeHistoryModal();
+                });
+            });
+
+            // Add click handlers for history items
             historyList.querySelectorAll('.history-item').forEach(item => {
                 item.addEventListener('click', () => {
                     const varName = item.dataset.var;
