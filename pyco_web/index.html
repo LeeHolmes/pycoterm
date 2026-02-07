@@ -650,6 +650,53 @@
             font-family: "Courier New", monospace;
         }
 
+        /* History item styles */
+        .history-item {
+            display: block;
+            padding: 8px 12px;
+        }
+
+        .history-item.ans-row {
+            background-color: #2a3a2a;
+            border-bottom: 2px solid #4a5a4a;
+            margin-bottom: 4px;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+
+        .history-item.ans-row .history-var {
+            color: #4ec94e;
+        }
+
+        .history-line {
+            display: flex;
+            gap: 8px;
+            align-items: baseline;
+        }
+
+        .history-var {
+            color: #569cd6;
+            font-family: "Courier New", monospace;
+            font-weight: bold;
+            min-width: 35px;
+        }
+
+        .history-expression {
+            color: #dcdcaa;
+            font-family: "Courier New", monospace;
+            white-space: pre-wrap;
+            word-break: break-all;
+            flex: 1;
+        }
+
+        .history-result {
+            color: #4ec94e;
+            font-family: "Courier New", monospace;
+            padding-left: 43px;
+            margin-top: 2px;
+        }
+
         /* Responsive styles for mobile */
         @media screen and (max-width: 600px) {
             .container {
@@ -923,6 +970,21 @@
             </div>
             <div class="function-modal-footer">
                 <button class="function-modal-close" id="functionModalClose">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- History Modal (reuses function-modal styles) -->
+    <div class="function-modal-overlay" id="historyModal">
+        <div class="function-modal">
+            <div class="function-modal-header">
+                <h3>Calculation History</h3>
+            </div>
+            <div class="function-list" id="historyList">
+                <div class="function-loading">No history yet</div>
+            </div>
+            <div class="function-modal-footer">
+                <button class="function-modal-close" id="historyModalClose">Close</button>
             </div>
         </div>
     </div>
@@ -1874,24 +1936,161 @@
                     stoBtn?.addEventListener('touchend', (e) => { e.preventDefault(); stoTouchHandled = true; sendSto(); setTimeout(() => { stoTouchHandled = false; }, 400); }, { passive: false });
                     stoBtn?.addEventListener('click', (e) => { if (stoTouchHandled) return; e.preventDefault(); sendSto(); });
                     
-                    // RCL button: insert "ans"
+                    // RCL button: opens history modal
                     const rclBtn = document.getElementById('rclBtn');
                     let rclTouchHandled = false;
-                    const sendRcl = () => {
-                        if (!pyreplContainer.pyreplConsole) return;
-                        for (const c of 'ans') {
-                            pyreplContainer.pyreplConsole.push_char(c.charCodeAt(0));
-                        }
-                    };
+                    
                     rclBtn?.addEventListener('mousedown', (e) => { e.preventDefault(); });
                     rclBtn?.addEventListener('touchstart', (e) => { e.preventDefault(); if (navigator.vibrate) navigator.vibrate(20); }, { passive: false });
-                    rclBtn?.addEventListener('touchend', (e) => { e.preventDefault(); rclTouchHandled = true; sendRcl(); setTimeout(() => { rclTouchHandled = false; }, 400); }, { passive: false });
-                    rclBtn?.addEventListener('click', (e) => { if (rclTouchHandled) return; e.preventDefault(); sendRcl(); });
+                    rclBtn?.addEventListener('touchend', (e) => { e.preventDefault(); rclTouchHandled = true; openHistoryModal(); setTimeout(() => { rclTouchHandled = false; }, 400); }, { passive: false });
+                    rclBtn?.addEventListener('click', (e) => { if (rclTouchHandled) return; e.preventDefault(); openHistoryModal(); });
                 }
             }, 100);
         }
 
         attachExpandedKeyboardHandlers();
+
+        // History modal
+        const historyModal = document.getElementById('historyModal');
+        const historyList = document.getElementById('historyList');
+        const historyModalClose = document.getElementById('historyModalClose');
+
+        function openHistoryModal() {
+            historyModal.classList.add('active');
+            renderHistoryList();
+        }
+
+        function closeHistoryModal() {
+            historyModal.classList.remove('active');
+        }
+
+        function getNumberedResults() {
+            // Get history from Python's _history dict
+            if (!window.pyreplGet) return [];
+            
+            try {
+                // Get the _history dict: {1: "command1", 2: "command2", ...}
+                const historyResult = window.pyreplGet('_history');
+                const historyData = JSON.parse(historyResult);
+                if (historyData.error || !historyData.result) {
+                    return [];
+                }
+                
+                const history = historyData.result;
+                const results = [];
+                
+                // For each entry in history, get the corresponding value
+                for (const key of Object.keys(history).sort((a, b) => parseInt(a) - parseInt(b))) {
+                    const varName = `_${key}`;
+                    const command = history[key];
+                    
+                    // Get the value of the variable
+                    const valueResult = window.pyreplGet(varName);
+                    const valueData = JSON.parse(valueResult);
+                    if (valueData.error) continue;
+                    
+                    // Convert value to string representation
+                    const value = typeof valueData.result === 'string' ? 
+                        `'${valueData.result}'` : String(valueData.result);
+                    
+                    results.push([varName, command, value]);
+                }
+                
+                return results;
+            } catch (e) {
+                console.log('Failed to get numbered results:', e);
+                return [];
+            }
+        }
+
+        function getAnsValue() {
+            // Get the value of 'ans' variable from Python
+            if (!window.pyreplGet) return null;
+            
+            try {
+                const jsonResult = window.pyreplGet('ans');
+                const data = JSON.parse(jsonResult);
+                if (data.error || data.result === null) {
+                    return null;
+                }
+                // Convert value to string representation
+                const value = data.result;
+                return typeof value === 'string' ? `'${value}'` : String(value);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function renderHistoryList() {
+            const numberedResults = getNumberedResults();
+            const ansValue = getAnsValue();
+            
+            let html = '';
+            
+            // Show 'ans' row if ans has been set
+            if (ansValue && ansValue !== 'None') {
+                html += `
+                    <div class="function-item history-item ans-row" data-var="ans">
+                        <div class="history-line">
+                            <span class="history-var">ans</span>
+                        </div>
+                        <div class="history-result">= ${escapeHtml(ansValue)}</div>
+                    </div>
+                `;
+            }
+            
+            if (numberedResults.length === 0 && !html) {
+                historyList.innerHTML = '<div class="function-loading">No history yet</div>';
+                return;
+            }
+
+            // Then show all numbered results in order
+            html += numberedResults.map(([varName, command, value]) => `
+                <div class="function-item history-item" data-var="${escapeHtml(varName)}">
+                    <div class="history-line">
+                        <span class="history-var">${escapeHtml(varName)}</span>
+                        <span class="history-expression">${escapeHtml(command)}</span>
+                    </div>
+                    <div class="history-result">= ${escapeHtml(value)}</div>
+                </div>
+            `).join('');
+
+            historyList.innerHTML = html;
+
+            // Add click handlers
+            historyList.querySelectorAll('.history-item').forEach(item => {
+                item.addEventListener('click', () => {
+                    const varName = item.dataset.var;
+                    if (varName) {
+                        insertResult(varName);
+                    }
+                    closeHistoryModal();
+                });
+            });
+
+            // Scroll to the bottom to show most recent entries
+            historyList.scrollTop = historyList.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function insertResult(varName) {
+            const pyreplContainer = document.querySelector('.pyrepl');
+            if (pyreplContainer?.pyreplConsole) {
+                for (const c of varName) {
+                    pyreplContainer.pyreplConsole.push_char(c.charCodeAt(0));
+                }
+            }
+        }
+
+        historyModalClose?.addEventListener('click', closeHistoryModal);
+        historyModal?.addEventListener('click', (e) => {
+            if (e.target === historyModal) closeHistoryModal();
+        });
 
         // Function browser modal
         const functionModal = document.getElementById('functionModal');
