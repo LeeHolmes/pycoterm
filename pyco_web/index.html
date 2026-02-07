@@ -1091,6 +1091,8 @@
             <div class="function-modal-header">
                 <h3>Calculation History</h3>
             </div>
+            <div id="historySavedSection"></div>
+            <div id="historyAutomaticHeader" class="history-section-header" style="display: none;">Automatic</div>
             <div class="function-list" id="historyList">
                 <div class="function-loading">No history yet</div>
             </div>
@@ -2312,34 +2314,38 @@
         function renderHistoryList() {
             const numberedResults = getNumberedResults();
             const savedVars = getSavedVariables();
+            const historySavedSection = document.getElementById('historySavedSection');
             
-            let html = '';
+            let savedHtml = '';
+            let historyHtml = '';
             
-            // Saved section (ans and var1-var8)
+            // Saved section (ans and var1-var8) - rendered in non-scrolling area
             if (savedVars.length > 0) {
-                html += '<div class="history-section">';
-                html += '<div class="history-section-header">Saved</div>';
-                html += '<div class="saved-vars-row">';
+                savedHtml += '<div class="history-section">';
+                savedHtml += '<div class="history-section-header">Saved</div>';
+                savedHtml += '<div class="saved-vars-row">';
                 
                 // Show saved variables (ans, var1-var8)
                 for (const [varName, value] of savedVars) {
                     const displayValue = value.length > 8 ? value.substring(0, 7) + '…' : value;
-                    html += `<button class="saved-var-btn" data-var="${varName}"><span class="saved-var-name">${varName}</span><span class="saved-var-value">${escapeHtml(displayValue)}</span></button>`;
+                    savedHtml += `<button class="saved-var-btn" data-var="${varName}"><span class="saved-var-name">${varName}</span><span class="saved-var-value">${escapeHtml(displayValue)}</span></button>`;
                 }
                 
-                html += '</div></div>';
+                savedHtml += '</div></div>';
             }
+            historySavedSection.innerHTML = savedHtml;
             
             if (numberedResults.length === 0 && savedVars.length === 0) {
                 historyList.innerHTML = '<div class="function-loading">No history yet</div>';
+                document.getElementById('historyAutomaticHeader').style.display = 'none';
                 return;
             }
 
-            // Automatic section (numbered results)
+            // Automatic section (numbered results) - rendered in scrolling area
+            const historyAutomaticHeader = document.getElementById('historyAutomaticHeader');
             if (numberedResults.length > 0) {
-                html += '<div class="history-section">';
-                html += '<div class="history-section-header">Automatic</div>';
-                html += numberedResults.map(([varName, command, value]) => `
+                historyAutomaticHeader.style.display = 'block';
+                historyHtml += numberedResults.map(([varName, command, value]) => `
                     <div class="function-item history-item" data-var="${escapeHtml(varName)}">
                         <div class="history-line">
                             <span class="history-var">${escapeHtml(varName)}</span>
@@ -2348,13 +2354,14 @@
                         <div class="history-result">= ${escapeHtml(truncateMiddle(value, 30))}</div>
                     </div>
                 `).join('');
-                html += '</div>';
+            } else {
+                historyAutomaticHeader.style.display = 'none';
             }
 
-            historyList.innerHTML = html;
+            historyList.innerHTML = historyHtml;
 
             // Add click handlers for saved variable buttons
-            historyList.querySelectorAll('.saved-var-btn').forEach(btn => {
+            historySavedSection.querySelectorAll('.saved-var-btn').forEach(btn => {
                 btn.addEventListener('click', () => {
                     const varName = btn.dataset.var;
                     if (varName) {
@@ -2375,7 +2382,7 @@
                 });
             });
 
-            // Scroll to the bottom to show most recent entries
+            // Scroll to the bottom to show most recent entries (only the automatic section scrolls)
             historyList.scrollTop = historyList.scrollHeight;
         }
 
