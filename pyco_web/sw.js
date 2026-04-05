@@ -1,5 +1,5 @@
 // Service Worker for pyco PWA
-const CACHE_NAME = 'pyco-v2';
+const CACHE_NAME = 'pyco-v3';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
