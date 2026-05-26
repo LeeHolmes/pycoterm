@@ -6,3 +6,5 @@ pyco_web/chunk-q8xkh3ym.js
 pyco_web/chunk-zvesc6aa.js
 pyco_web/pyrepl.esm.js
 pyco_web/pyrepl.js
+dist
+build
