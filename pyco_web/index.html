@@ -74,6 +74,40 @@
             color: #ffffff;
         }
 
+        .menu-dropdown {
+            position: relative;
+            user-select: none;
+        }
+
+        .menu-dropdown-content {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            min-width: 220px;
+            background-color: #323232;
+            border: 1px solid #8a8375;
+            border-top: none;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+            z-index: 200;
+        }
+
+        .menu-dropdown:hover .menu-dropdown-content {
+            display: block;
+        }
+
+        .menu-dropdown-item {
+            padding: 8px 12px;
+            color: #dcdcdc;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+
+        .menu-dropdown-item:hover {
+            background-color: #8a8375;
+            color: #ffffff;
+        }
+
         /* Terminal content area with CRT border layers */
         .terminal-content {
             flex: 1;
@@ -977,6 +1011,12 @@
         <div class="terminal-window">
             <!-- Menu Bar -->
             <div class="menu-bar">
+                <div class="menu-item menu-dropdown">
+                    File
+                    <div class="menu-dropdown-content">
+                        <div class="menu-dropdown-item" onclick="showCustomize()">Load Customizations</div>
+                    </div>
+                </div>
                 <div class="menu-item" onclick="window.open('https://github.com/LeeHolmes/pyco/blob/main/README.md', '_blank')">Help</div>
                 <div class="menu-item" onclick="showAbout()">About</div>
                 <div class="menu-item" id="devToolsMenuItem" style="display: none;" onclick="showDevTools()">DevTools</div>
@@ -996,7 +1036,6 @@
                                                  data-title="python"
                                                  data-header="false"
                                                  data-buttons="false"
-                                                 data-src="https://raw.githubusercontent.com/LeeHolmes/pyco/main/pyco.py"
                                                  data-src-output="true"
                                                  data-startup-message="false">
                                             </div>
@@ -1114,6 +1153,20 @@
             </div>
             <div class="function-modal-footer">
                 <button class="function-modal-close" id="storeModalClose">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Customize Modal -->
+    <div class="modal-overlay" id="customizeModal">
+        <div class="modal">
+            <h2>Load Customizations</h2>
+            <p style="margin-bottom: 10px;">Enter the URL of a Python script to run after pyco loads on startup. Leave blank to disable.</p>
+            <input type="url" id="customizeUrl" placeholder="https://example.com/my_customizations.py"
+                   style="width: 100%; padding: 8px; background: #1e1e1e; color: #4ec94e; border: 1px solid #4ec94e; font-family: monospace; font-size: 14px; box-sizing: border-box; margin-bottom: 16px;">
+            <div style="display: flex; gap: 10px;">
+                <button class="modal-close" onclick="saveCustomize()">Save</button>
+                <button class="modal-close" onclick="closeCustomize()">Cancel</button>
             </div>
         </div>
     </div>
@@ -1285,8 +1338,60 @@
         })();
     </script>
 
-    <!-- Load pyrepl-web locally -->
-    <script src="pyrepl.js"></script>
+    <!-- Pre-fetch pyco.py + optional customization script, then load pyrepl-web -->
+    <script>
+        const PYCO_SRC = 'https://raw.githubusercontent.com/LeeHolmes/pyco/main/pyco.py';
+        const CUSTOMIZE_KEY = 'pyco_customization_url';
+
+        (async function loadStartupScript() {
+            let pycoCode = '';
+            try {
+                const r = await fetch(PYCO_SRC);
+                if (r.ok) pycoCode = await r.text();
+                else console.warn('pyco: failed to fetch pyco.py:', r.status);
+            } catch (e) {
+                console.warn('pyco: error fetching pyco.py:', e);
+            }
+
+            let customCode = '';
+            const customUrl = localStorage.getItem(CUSTOMIZE_KEY) || '';
+            if (customUrl) {
+                try {
+                    const r = await fetch(customUrl);
+                    if (r.ok) customCode = await r.text();
+                    else console.warn('pyco: failed to fetch customization from', customUrl, r.status);
+                } catch (e) {
+                    console.warn('pyco: error fetching customization:', e);
+                }
+            }
+
+            const combined = customCode ? pycoCode + '\n' + customCode : pycoCode;
+            if (combined) window.pyreplStartupScript = combined;
+
+            await new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = 'pyrepl.js';
+                s.onload = resolve;
+                s.onerror = reject;
+                document.body.appendChild(s);
+            });
+        })();
+
+        function showCustomize() {
+            const url = localStorage.getItem(CUSTOMIZE_KEY) || '';
+            document.getElementById('customizeUrl').value = url;
+            document.getElementById('customizeModal').classList.add('active');
+        }
+        function closeCustomize() {
+            document.getElementById('customizeModal').classList.remove('active');
+        }
+        function saveCustomize() {
+            const url = document.getElementById('customizeUrl').value.trim();
+            if (url) localStorage.setItem(CUSTOMIZE_KEY, url);
+            else localStorage.removeItem(CUSTOMIZE_KEY);
+            closeCustomize();
+        }
+    </script>
 
     <script>
         // Prevent page scrolling globally - only allow in specific scrollable areas

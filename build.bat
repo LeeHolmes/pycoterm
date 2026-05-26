@@ -60,17 +60,17 @@ if %ERRORLEVEL% neq 0 (
 )
 
 REM Check if executable was created
-if exist "dist\pyco.exe" (
+if exist "dist\pyco\pyco.exe" (
     echo.
     echo ========================================
     echo Build successful!
     echo ========================================
     echo.
-    echo Executable location: dist\pyco.exe
-    echo File size:
-    dir dist\pyco.exe | findstr pyco.exe
+    echo Executable location: dist\pyco\pyco.exe
+    echo Output folder contents:
+    dir dist\pyco
     echo.
-    echo You can now distribute the single file: dist\pyco.exe
+    echo Distribute the entire folder: dist\pyco
 ) else (
     echo.
     echo ERROR: Executable was not created successfully
@@ -81,4 +81,4 @@ if exist "dist\pyco.exe" (
 
 echo.
 echo Build process complete!
-echo Your standalone pyco.exe is ready in the dist folder.
+echo Your onedir build is ready in the dist\pyco folder.

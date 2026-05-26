@@ -11,21 +11,59 @@ import traceback
 import contextlib
 import urllib.request
 import urllib.error
+import urllib.parse
 import json
 import re
 from typing import List, Optional, Any
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QTextEdit, QVBoxLayout, QWidget, 
+    QApplication, QMainWindow, QTextEdit, QVBoxLayout, QWidget,
     QHBoxLayout, QLabel, QMenuBar, QMenu, QMessageBox, QDialog,
     QTextBrowser, QSplitter, QFrame, QProgressDialog, QPushButton,
-    QSizePolicy, QSlider, QLineEdit
+    QSizePolicy, QSlider, QLineEdit, QInputDialog
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, pyqtSlot
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal, QThread, pyqtSlot, QEvent
 from PyQt6.QtGui import (
     QFont, QTextCursor, QTextCharFormat, QColor, QKeySequence,
     QAction, QPalette, QSyntaxHighlighter, QTextDocument, QIcon,
     QPainter, QPen, QLinearGradient, QClipboard
 )
+
+
+HTTP_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) pycoterm/1.0",
+    "Accept": "text/plain,text/x-python,text/*;q=0.9,*/*;q=0.8",
+}
+
+
+def normalize_script_url(url: str) -> str:
+    """Normalize known host URL patterns to direct script content URLs."""
+    clean_url = (url or "").strip()
+    if not clean_url:
+        return ""
+
+    try:
+        parsed = urllib.parse.urlparse(clean_url)
+        if parsed.netloc.lower() == "github.com":
+            parts = parsed.path.strip("/").split("/")
+            # Convert github.com/<owner>/<repo>/blob/<ref>/<path> to raw.githubusercontent.com
+            if len(parts) >= 5 and parts[2] == "blob":
+                owner, repo, ref = parts[0], parts[1], parts[3]
+                file_path = "/".join(parts[4:])
+                raw_path = f"/{owner}/{repo}/{ref}/{file_path}"
+                return urllib.parse.urlunparse(("https", "raw.githubusercontent.com", raw_path, "", "", ""))
+    except Exception:
+        # If parsing fails, keep original URL and let fetch report a proper error.
+        pass
+
+    return clean_url
+
+
+def fetch_text_url(url: str, timeout: int = 10) -> tuple[str, str]:
+    """Fetch UTF-8 text from URL with friendly headers. Returns (text, resolved_url)."""
+    resolved_url = normalize_script_url(url)
+    request = urllib.request.Request(resolved_url, headers=HTTP_HEADERS)
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        return response.read().decode("utf-8"), resolved_url
 
 
 
@@ -44,16 +82,14 @@ class PycoDownloader(QThread):
         try:
             # Download pyco.py
             pyco_path = os.path.join(self.install_dir, "pyco.py")
-            response = urllib.request.urlopen(self.pyco_url, timeout=10)
-            content = response.read().decode('utf-8')
+            content, _ = fetch_text_url(self.pyco_url, timeout=10)
             content = content.replace('\r\n', '\n').replace('\r', '\n')
             with open(pyco_path, 'w', encoding='utf-8', newline='\n') as f:
                 f.write(content)
             
             # Download README.md
             readme_path = os.path.join(self.install_dir, "README.md")
-            response = urllib.request.urlopen(self.readme_url, timeout=10)
-            content = response.read().decode('utf-8')
+            content, _ = fetch_text_url(self.readme_url, timeout=10)
             content = content.replace('\r\n', '\n').replace('\r', '\n')
             with open(readme_path, 'w', encoding='utf-8', newline='\n') as f:
                 f.write(content)
@@ -84,8 +120,7 @@ class PycoVersionChecker(QThread):
                 pass  # Ignore any errors from activity URL
             
             # Download the current version from GitHub
-            response = urllib.request.urlopen(self.pyco_url, timeout=10)
-            remote_content = response.read().decode('utf-8')
+            remote_content, _ = fetch_text_url(self.pyco_url, timeout=10)
             remote_content = remote_content.replace('\r\n', '\n').replace('\r', '\n')
             
             # Read local version if it exists
@@ -1420,6 +1455,13 @@ class PythonREPLTerminal(QMainWindow):
         self.setup_menus()
         self.check_pyco_file()
     
+    def changeEvent(self, event):
+        """Re-focus terminal input when window is restored from minimized state"""
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            if not self.isMinimized() and hasattr(self, 'terminal'):
+                QTimer.singleShot(0, self.terminal.setFocus)
+
     def check_for_updates(self):
         """Check for pyco updates and update menu appearance if available"""
         if hasattr(self, 'version_checker') and not self.version_checker.isRunning():
@@ -1471,6 +1513,30 @@ class PythonREPLTerminal(QMainWindow):
         os.makedirs(pyco_dir, exist_ok=True)
         
         return pyco_dir
+
+    def get_settings_path(self):
+        """Return path to the JSON settings file"""
+        return os.path.join(self.install_dir, "settings.json")
+
+    def load_settings(self):
+        """Load settings dict from disk (returns {} on missing/corrupt file)"""
+        path = self.get_settings_path()
+        try:
+            if os.path.exists(path):
+                with open(path, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+        except Exception:
+            pass
+        return {}
+
+    def save_settings(self, settings):
+        """Persist settings dict to disk"""
+        path = self.get_settings_path()
+        try:
+            with open(path, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, indent=2)
+        except Exception as e:
+            self.terminal.append_system_message(f"Warning: could not save settings: {e}\n")
         
     def mousePressEvent(self, event):
         """Handle mouse press for window dragging"""
@@ -1728,6 +1794,58 @@ class PythonREPLTerminal(QMainWindow):
                 self.terminal.append_system_message(f"Error loading pyco.py: {str(e)}\n")
                 return False
         return False
+
+    def load_customization_url_script(self):
+        """Fetch and execute the saved customization URL, if any"""
+        settings = self.load_settings()
+        url = settings.get("customization_url", "").strip()
+        if not url:
+            return
+
+        try:
+            code, resolved_url = fetch_text_url(url, timeout=10)
+        except Exception as e:
+            self.terminal.append_system_message(f"Warning: could not load customization from {url}: {e}\n")
+            return
+
+        if resolved_url != url:
+            self.terminal.append_system_message(f"Loading customizations from {resolved_url}\n")
+
+        try:
+            old_stdout = sys.stdout
+            stdout_capture = io.StringIO()
+            try:
+                sys.stdout = stdout_capture
+                exec(code, self.terminal.python_executor.globals_dict)
+                output = stdout_capture.getvalue()
+                if output.strip():
+                    self.terminal.append_system_message(output.lstrip('\n'))
+            finally:
+                sys.stdout = old_stdout
+        except Exception as e:
+            self.terminal.append_system_message(f"Error in customization script: {e}\n")
+
+    def prompt_load_customizations(self):
+        """Ask the user for a customization URL and save it"""
+        settings = self.load_settings()
+        current_url = settings.get("customization_url", "")
+        url, ok = QInputDialog.getText(
+            self,
+            "Load Customizations",
+            "Enter URL of customization script:",
+            text=current_url,
+        )
+        if not ok:
+            return
+
+        url = url.strip()
+        if url:
+            settings["customization_url"] = url
+        else:
+            settings.pop("customization_url", None)
+        self.save_settings(settings)
+        if url:
+            self.load_customization_url_script()
         
     def check_pyco_file(self):
         """Check if pyco.py exists, load it if it does, or offer to download if not"""
@@ -1735,7 +1853,9 @@ class PythonREPLTerminal(QMainWindow):
         
         if os.path.exists(pyco_path):
             # Load the existing pyco.py file
-            self.load_pyco_file()
+            if self.load_pyco_file():
+                # Load any saved customization script after pyco is imported
+                self.load_customization_url_script()
             # Insert prompt after loading is complete
             self.terminal.insert_prompt()
         else:
@@ -1777,6 +1897,7 @@ class PythonREPLTerminal(QMainWindow):
                 # This was initial download - load the file
                 self.terminal.append_system_message(f"✓ {message}\n")
                 if self.load_pyco_file():
+                    self.load_customization_url_script()
                     # File loaded successfully - don't show the loading message
                     pass
                 else:
@@ -1819,6 +1940,13 @@ class PythonREPLTerminal(QMainWindow):
         exit_action.setShortcut(QKeySequence("Ctrl+Q"))
         exit_action.triggered.connect(self.close)
         self.file_menu.addAction(exit_action)
+
+        # Load Customizations action
+        customize_action = QAction("Load Customizations", self)
+        customize_action.setStatusTip("Set a URL to load a customization script on startup")
+        customize_action.triggered.connect(self.prompt_load_customizations)
+        self.file_menu.insertAction(exit_action, customize_action)
+        self.file_menu.insertSeparator(exit_action)
         
         # Help menu
         help_menu = menubar.addMenu("Help")
