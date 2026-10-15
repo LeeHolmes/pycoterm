@@ -1017,7 +1017,7 @@
                         <div class="menu-dropdown-item" onclick="showCustomize()">Load Customizations</div>
                     </div>
                 </div>
-                <div class="menu-item" onclick="window.open('https://github.com/LeeHolmes/pyco/blob/main/README.md', '_blank')">Help</div>
+                <div class="menu-item" onclick="showHelp()">Help</div>
                 <div class="menu-item" onclick="showAbout()">About</div>
                 <div class="menu-item" id="devToolsMenuItem" style="display: none;" onclick="showDevTools()">DevTools</div>
             </div>
@@ -1338,12 +1338,17 @@
         })();
     </script>
 
-    <!-- Pre-fetch pyco.py + optional customization script, then load pyrepl-web -->
+    <!-- Load the browser or native Android Python runtime. -->
     <script>
         const PYCO_SRC = 'https://raw.githubusercontent.com/LeeHolmes/pyco/main/pyco.py';
         const CUSTOMIZE_KEY = 'pyco_customization_url';
 
         (async function loadStartupScript() {
+            if (window.AndroidPython) {
+                await loadRuntimeScript('android_runtime.js');
+                return;
+            }
+
             let pycoCode = '';
             try {
                 const r = await fetch(PYCO_SRC);
@@ -1368,14 +1373,18 @@
             const combined = customCode ? pycoCode + '\n' + customCode : pycoCode;
             if (combined) window.pyreplStartupScript = combined;
 
-            await new Promise((resolve, reject) => {
+            await loadRuntimeScript('pyrepl.js');
+        })();
+
+        function loadRuntimeScript(src) {
+            return new Promise((resolve, reject) => {
                 const s = document.createElement('script');
-                s.src = 'pyrepl.js';
+                s.src = src;
                 s.onload = resolve;
                 s.onerror = reject;
                 document.body.appendChild(s);
             });
-        })();
+        }
 
         function showCustomize() {
             const url = localStorage.getItem(CUSTOMIZE_KEY) || '';
@@ -1391,6 +1400,57 @@
             else localStorage.removeItem(CUSTOMIZE_KEY);
             closeCustomize();
         }
+        function showHelp() {
+            if (window.AndroidPython) {
+                if (document.getElementById('androidHelpOverlay')) return;
+                const terminalInput = document.querySelector('.pyrepl .xterm-helper-textarea');
+                window.androidHelpRestoreTextInput =
+                    document.activeElement === terminalInput
+                    && !document.body.classList.contains('keyboard-open');
+                terminalInput?.blur();
+                if (typeof window.AndroidPython.hideKeyboard === 'function') {
+                    window.AndroidPython.hideKeyboard();
+                }
+
+                const overlay = document.createElement('div');
+                overlay.id = 'androidHelpOverlay';
+                Object.assign(overlay.style, {
+                    position: 'fixed',
+                    inset: '0',
+                    zIndex: '10000',
+                    background: '#ffffff'
+                });
+                const frame = document.createElement('iframe');
+                frame.src = 'pyco_help.html';
+                frame.title = 'Pyco Help';
+                Object.assign(frame.style, {
+                    width: '100%',
+                    height: '100%',
+                    border: '0',
+                    display: 'block'
+                });
+                overlay.appendChild(frame);
+                document.body.appendChild(overlay);
+            } else {
+                window.open('https://github.com/LeeHolmes/pyco/blob/main/README.md', '_blank');
+            }
+        }
+        function closeAndroidHelp() {
+            document.getElementById('androidHelpOverlay')?.remove();
+            if (window.androidHelpRestoreTextInput) {
+                const terminalInput = document.querySelector('.pyrepl .xterm-helper-textarea');
+                terminalInput?.focus();
+                if (typeof window.AndroidPython?.showKeyboard === 'function') {
+                    window.AndroidPython.showKeyboard();
+                }
+            }
+            window.androidHelpRestoreTextInput = false;
+        }
+        window.addEventListener('message', (event) => {
+            if (event.data === 'closePycoHelp') {
+                closeAndroidHelp();
+            }
+        });
     </script>
 
     <script>
@@ -1572,6 +1632,14 @@
             'down': '\x1b[B'            // Down arrow
         };
 
+        function triggerHaptic(duration) {
+            if (window.AndroidPython?.vibrate) {
+                window.AndroidPython.vibrate(duration);
+            } else if (navigator.vibrate) {
+                navigator.vibrate(duration);
+            }
+        }
+
         // Wait for terminal to be ready, then attach button handlers
         function attachKeyboardButtons() {
             const pyreplContainer = document.querySelector('.pyrepl');
@@ -1589,7 +1657,7 @@
                         btn.addEventListener('touchstart', (e) => {
                             e.preventDefault();
                             // Haptic feedback immediately on touch
-                            if (navigator.vibrate) navigator.vibrate(20);
+                            triggerHaptic(20);
                         }, { passive: false });
                         
                         // Track if touch handled the event
@@ -1741,7 +1809,7 @@
                 hadSelection = false;
                 
                 // Haptic feedback
-                if (navigator.vibrate) navigator.vibrate(100);
+                triggerHaptic(100);
             }
             
             function hideTextOverlay() {
@@ -1963,6 +2031,7 @@
         // Handle visual viewport resize (virtual keyboard on mobile)
         if (window.visualViewport) {
             function handleViewportResize() {
+                if (window.AndroidPython) return;
                 const container = document.querySelector('.container');
                 if (!container) return;
                 // Set container height to visual viewport height
@@ -1978,7 +2047,7 @@
         }
 
         // Register service worker for PWA support
-        if ('serviceWorker' in navigator) {
+        if (!window.AndroidPython && 'serviceWorker' in navigator) {
             navigator.serviceWorker.register('./sw.js').catch((err) => {
                 console.log('Service worker registration failed:', err);
             });
@@ -2002,6 +2071,9 @@
             if (termTextarea) {
                 termTextarea.blur();
             }
+            if (typeof window.AndroidPython?.hideKeyboard === 'function') {
+                window.AndroidPython.hideKeyboard();
+            }
         }
 
         function closeExpandedKeyboardFn() {
@@ -2013,13 +2085,21 @@
         function toggleExpandedKeyboard() {
             if (expandedKeyboard.classList.contains('active')) {
                 closeExpandedKeyboardFn();
+                if (window.AndroidPython) {
+                    requestAnimationFrame(() => {
+                        document.querySelector('.pyrepl .xterm-helper-textarea')?.focus();
+                        if (typeof window.AndroidPython.showKeyboard === 'function') {
+                            window.AndroidPython.showKeyboard();
+                        }
+                    });
+                }
             } else {
                 openExpandedKeyboard();
             }
         }
 
         numpadToggle.addEventListener('click', () => {
-            if (navigator.vibrate) navigator.vibrate(20);
+            triggerHaptic(20);
             toggleExpandedKeyboard();
         });
         numpadToggle.addEventListener('touchend', (e) => {
@@ -2033,7 +2113,11 @@
                 const pyreplContainer = document.querySelector('.pyrepl');
                 const termTextarea = pyreplContainer?.querySelector('.xterm-helper-textarea');
                 if (e.target === termTextarea) {
-                    closeExpandedKeyboardFn();
+                    if (window.AndroidPython) {
+                        termTextarea.blur();
+                    } else {
+                        closeExpandedKeyboardFn();
+                    }
                 }
             }
         });
@@ -2099,7 +2183,7 @@
                         btn.addEventListener('touchstart', (e) => {
                             e.preventDefault();
                             // Haptic feedback immediately on touch
-                            if (navigator.vibrate) navigator.vibrate(20);
+                            triggerHaptic(20);
                             
                             // Start key repeat for backspace
                             if (btn.dataset.key === 'backspace') {
@@ -2110,7 +2194,7 @@
                                     repeatInterval = setInterval(() => {
                                         if (pyreplContainer.pyreplConsole) {
                                             pyreplContainer.pyreplConsole.push_char('\x7f'.charCodeAt(0));
-                                            if (navigator.vibrate) navigator.vibrate(10);
+                                            triggerHaptic(10);
                                         }
                                     }, 50);
                                 }, 500);
@@ -2181,7 +2265,7 @@
                         }
                     };
                     stoBtn?.addEventListener('mousedown', (e) => { e.preventDefault(); });
-                    stoBtn?.addEventListener('touchstart', (e) => { e.preventDefault(); if (navigator.vibrate) navigator.vibrate(20); }, { passive: false });
+                    stoBtn?.addEventListener('touchstart', (e) => { e.preventDefault(); triggerHaptic(20); }, { passive: false });
                     stoBtn?.addEventListener('touchend', (e) => { e.preventDefault(); stoTouchHandled = true; handleSto(); setTimeout(() => { stoTouchHandled = false; }, 400); }, { passive: false });
                     stoBtn?.addEventListener('click', (e) => { if (stoTouchHandled) return; e.preventDefault(); handleSto(); });
                     
@@ -2190,7 +2274,7 @@
                     let rclTouchHandled = false;
                     
                     rclBtn?.addEventListener('mousedown', (e) => { e.preventDefault(); });
-                    rclBtn?.addEventListener('touchstart', (e) => { e.preventDefault(); if (navigator.vibrate) navigator.vibrate(20); }, { passive: false });
+                    rclBtn?.addEventListener('touchstart', (e) => { e.preventDefault(); triggerHaptic(20); }, { passive: false });
                     rclBtn?.addEventListener('touchend', (e) => { e.preventDefault(); rclTouchHandled = true; openHistoryModal(); setTimeout(() => { rclTouchHandled = false; }, 400); }, { passive: false });
                     rclBtn?.addEventListener('click', (e) => { if (rclTouchHandled) return; e.preventDefault(); openHistoryModal(); });
                 }

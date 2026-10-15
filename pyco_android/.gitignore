@@ -1,0 +1,8 @@
+.gradle/
+.idea/
+__pycache__/
+*.py[cod]
+app/build/
+app/src/main/res/drawable-nodpi/ic_launcher.png
+build/
+local.properties

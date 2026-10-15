@@ -14,6 +14,7 @@ import urllib.error
 import urllib.parse
 import json
 import re
+from markdown_renderer import render_markdown
 from typing import List, Optional, Any
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QTextEdit, QVBoxLayout, QWidget,
@@ -2140,7 +2141,7 @@ class PythonREPLTerminal(QMainWindow):
             layout.addWidget(self.help_browser)
         
         # Update content and show window
-        html_content = self.markdown_to_html(readme_content)
+        html_content = render_markdown(readme_content)
         self.help_browser.setHtml(html_content)
         
         # Show as non-modal window

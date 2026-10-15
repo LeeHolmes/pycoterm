@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Pyco Help</title>
+    <style>
+        *, *::before, *::after {
+            box-sizing: border-box;
+        }
+        html, body {
+            background: #ffffff !important;
+            color: #333333 !important;
+            font-size: 16px !important;
+            line-height: 1.4 !important;
+            margin: 0 !important;
+            max-width: none !important;
+            min-height: 100%;
+            width: 100%;
+        }
+        body {
+            overflow-x: hidden;
+            padding: 16px !important;
+        }
+        button {
+            margin: 0 0 16px;
+            padding: 8px 14px;
+        }
+        #help {
+            font-size: 16px !important;
+            line-height: 1.4 !important;
+            max-width: 100%;
+            overflow-wrap: anywhere;
+            width: 100%;
+        }
+        #help h1 { font-size: 2rem !important; }
+        #help h2 { font-size: 1.5rem !important; }
+        #help h3 { font-size: 1.25rem !important; }
+        #help h4, #help h5, #help h6 { font-size: 1rem !important; }
+        #help p, #help li, #help td, #help th {
+            font-size: 1rem !important;
+            line-height: 1.4 !important;
+        }
+        #help pre {
+            font-family: monospace !important;
+            font-feature-settings: "liga" 0, "calt" 0 !important;
+            font-kerning: none !important;
+            font-size: 0.9rem !important;
+            font-variant-ligatures: none !important;
+            line-height: 1.35 !important;
+            letter-spacing: 0 !important;
+            max-width: 100%;
+            overflow-wrap: normal !important;
+            overflow-x: auto !important;
+            text-rendering: optimizeSpeed;
+            white-space: pre !important;
+            word-break: normal !important;
+        }
+        #help div[style*="font-size"] {
+            font-size: 0.8rem !important;
+        }
+        #help table {
+            table-layout: fixed;
+            width: 100% !important;
+        }
+        #help td, #help th {
+            overflow-wrap: anywhere;
+            word-break: normal;
+        }
+        #help img {
+            height: auto;
+            max-width: 100%;
+        }
+    </style>
+</head>
+<body>
+    <button onclick="window.parent !== window
+        ? window.parent.postMessage('closePycoHelp', '*')
+        : history.back()">Back to Pyco</button>
+    <div id="help"></div>
+    <script>
+        const rendered = new DOMParser().parseFromString(
+            window.AndroidPython.getHelp(), 'text/html');
+        document.head.insertAdjacentHTML('beforeend', rendered.head.innerHTML);
+        document.getElementById('help').innerHTML = rendered.body.innerHTML;
+    </script>
+</body>
+</html>
