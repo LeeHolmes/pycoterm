@@ -3,6 +3,7 @@ package com.leeholmes.pyco;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Color;
 import android.graphics.Rect;
 import android.net.Uri;
@@ -11,6 +12,7 @@ import android.os.Bundle;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
+import android.util.AtomicFile;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.ViewTreeObserver;
@@ -29,7 +31,10 @@ import com.chaquo.python.Python;
 import org.json.JSONObject;
 
 import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
@@ -39,12 +44,18 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private static final String APP_URL = "file:///android_asset/index.html";
+    private static final String PYCO_URL =
+            "https://raw.githubusercontent.com/LeeHolmes/pyco/main/pyco.py";
 
     private final ExecutorService startupExecutor = Executors.newSingleThreadExecutor();
+    private final ExecutorService updateExecutor = Executors.newSingleThreadExecutor();
     private WebView webView;
     private PythonBridge pythonBridge;
     private ViewTreeObserver.OnGlobalLayoutListener viewportListener;
     private volatile int visibleViewportHeight;
+    private volatile boolean destroyed;
+    private AtomicFile updatedPyco;
+    private String installedPycoSource;
 
     @SuppressLint({"SetJavaScriptEnabled", "AddJavascriptInterface"})
     @Override
@@ -75,6 +86,7 @@ public final class MainActivity extends Activity {
                 return !request.getUrl().toString().startsWith("file:///android_asset/");
             }
         });
+        updatedPyco = new AtomicFile(new File(getFilesDir(), "pyco.py"));
         pythonBridge = new PythonBridge();
         webView.addJavascriptInterface(pythonBridge, "AndroidPython");
         setContentView(webView);
@@ -103,11 +115,13 @@ public final class MainActivity extends Activity {
 
     @Override
     protected void onDestroy() {
+        destroyed = true;
         if (webView.getViewTreeObserver().isAlive()) {
             webView.getViewTreeObserver().removeOnGlobalLayoutListener(viewportListener);
         }
         pythonBridge.cancelInput();
         startupExecutor.shutdownNow();
+        updateExecutor.shutdownNow();
         webView.removeJavascriptInterface("AndroidPython");
         webView.destroy();
         super.onDestroy();
@@ -178,11 +192,68 @@ public final class MainActivity extends Activity {
     }
 
     private final class PythonBridge {
-        private final PyObject backend =
-                Python.getInstance().getModule("android_backend");
+        private final PyObject backend;
 
         private PythonBridge() {
+            Python python = Python.getInstance();
+            String savedSource = null;
+            try {
+                // openRead also recovers an interrupted atomic write.
+                if (updatedPyco.getBaseFile().exists()
+                        || new File(updatedPyco.getBaseFile() + ".bak").exists()) {
+                    try (InputStream stream = updatedPyco.openRead()) {
+                        savedSource = readText(stream);
+                    }
+                }
+                try (InputStream stream = getAssets().open("pyco.py")) {
+                    installedPycoSource = savedSource == null ? readText(stream) : savedSource;
+                }
+            } catch (IOException exception) {
+                throw new IllegalStateException("Unable to read installed pyco.py", exception);
+            }
+            python.getModule("pyco_loader").callAttr(
+                    "configure", savedSource, updatedPyco.getBaseFile().getPath());
+            backend = python.getModule("android_backend");
             backend.callAttr("set_input_callback", new InputCallback());
+        }
+
+        @JavascriptInterface
+        public void checkForUpdates() {
+            updateExecutor.execute(() -> {
+                try {
+                    String remote = fetchPyco();
+                    boolean available = !normalizeSource(remote).equals(
+                            normalizeSource(installedPycoSource));
+                    postUpdateResult(available ? "available" : "current", "");
+                } catch (Exception exception) {
+                    postUpdateResult("check-error",
+                            "Unable to check for pyco updates: " + exception.getMessage());
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public void updatePyco() {
+            updateExecutor.execute(() -> {
+                try {
+                    String source = fetchPyco();
+                    Python.getInstance().getBuiltins().callAttr(
+                            "compile", source, updatedPyco.getBaseFile().getPath(), "exec");
+                    FileOutputStream stream = updatedPyco.startWrite();
+                    try {
+                        stream.write(source.getBytes(StandardCharsets.UTF_8));
+                        updatedPyco.finishWrite(stream);
+                    } catch (IOException exception) {
+                        updatedPyco.failWrite(stream);
+                        throw exception;
+                    }
+                    postUpdateResult("updated",
+                            "Updated pyco. Restarting for more happy calculating!");
+                } catch (Exception exception) {
+                    postUpdateResult("update-error",
+                            "Unable to update pyco.py: " + exception.getMessage());
+                }
+            });
         }
 
         @JavascriptInterface
@@ -296,6 +367,60 @@ public final class MainActivity extends Activity {
                     + JSONObject.quote(pendingOutput) + ","
                     + JSONObject.quote(prompt) + ")";
             webView.post(() -> webView.evaluateJavascript(javascript, null));
+        }
+    }
+
+    private void postUpdateResult(String state, String message) {
+        String javascript = "window.pycoAndroidUpdateStatus("
+                + JSONObject.quote(state) + "," + JSONObject.quote(message) + ")";
+        webView.post(() -> {
+            if (!destroyed) {
+                webView.evaluateJavascript(javascript, null);
+                if ("updated".equals(state)) {
+                    Intent restart = new Intent(MainActivity.this, RestartActivity.class);
+                    restart.putExtra(RestartActivity.PROCESS_ID, android.os.Process.myPid());
+                    restart.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+                    startActivity(restart);
+                }
+            }
+        });
+    }
+
+    private static String normalizeSource(String source) {
+        return source.replace("\r\n", "\n").replace('\r', '\n').trim();
+    }
+
+    private static String readText(InputStream stream) throws IOException {
+        InputStreamReader reader = new InputStreamReader(stream, StandardCharsets.UTF_8);
+        StringBuilder text = new StringBuilder();
+        char[] buffer = new char[8192];
+        int count;
+        while ((count = reader.read(buffer)) != -1) {
+            text.append(buffer, 0, count);
+        }
+        return text.toString();
+    }
+
+    private static String fetchPyco() throws IOException {
+        HttpURLConnection connection = (HttpURLConnection) new URL(PYCO_URL).openConnection();
+        connection.setConnectTimeout(10_000);
+        connection.setReadTimeout(10_000);
+        connection.setRequestProperty("Accept", "text/x-python,text/plain");
+        connection.setRequestProperty("User-Agent", "Pyco Android/1.0");
+        try {
+            int status = connection.getResponseCode();
+            if (status < 200 || status >= 300) {
+                throw new IOException("Pyco request failed with HTTP " + status);
+            }
+            try (InputStream stream = connection.getInputStream()) {
+                String source = readText(stream);
+                if (source.trim().isEmpty()) {
+                    throw new IOException("Downloaded pyco.py is empty");
+                }
+                return source;
+            }
+        } finally {
+            connection.disconnect();
         }
     }
 

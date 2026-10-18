@@ -13,6 +13,10 @@
         android:theme="@style/AppTheme"
         android:usesCleartextTraffic="false">
         <activity
+            android:name=".RestartActivity"
+            android:exported="false"
+            android:process=":restart" />
+        <activity
             android:name=".MainActivity"
             android:configChanges="keyboard|keyboardHidden|orientation|screenSize|smallestScreenSize|uiMode"
             android:exported="true"

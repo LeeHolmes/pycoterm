@@ -7,12 +7,13 @@ import sys
 import threading
 import traceback
 import builtins
+from pyco_loader import load_pyco
 from markdown_renderer import render_markdown as _render_markdown
 from pygments.lexers import Python3Lexer
 
 _startup_output = io.StringIO()
 with contextlib.redirect_stdout(_startup_output), contextlib.redirect_stderr(_startup_output):
-    import pyco
+    pyco = load_pyco()
 
 
 _globals = pyco.__dict__

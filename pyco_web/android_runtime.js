@@ -74,6 +74,10 @@
             white-space: pre;
             word-break: normal;
         }
+        .pyrepl .android-system-message {
+            white-space: pre-wrap;
+            overflow-wrap: anywhere;
+        }
         .pyrepl .android-input-row {
             align-items: flex-start;
             display: flex;
@@ -274,6 +278,14 @@
             output.appendChild(document.createTextNode(line));
         }
         output.appendChild(document.createTextNode('\n'));
+    }
+
+    function appendSystemMessage(text) {
+        const message = document.createElement('span');
+        message.className = 'android-system-message';
+        message.textContent = text.endsWith('\n') ? text : `${text}\n`;
+        output.appendChild(message);
+        scrollToBottom();
     }
 
     function setInput(value, cursor) {
@@ -485,6 +497,45 @@
     window.pyreplGet = (name) => window.AndroidPython.get(name);
     window.pyreplCall = (name, argument) => window.AndroidPython.callHelper(name, argument);
 
+    const updateMenuItem = document.getElementById('updatePycoMenuItem');
+    const statusBar = document.querySelector('.status-bar');
+    let updatingPyco = false;
+    let pycoRestartRequired = false;
+    const pendingUpdateMessages = [];
+
+    window.pycoAndroidUpdateStatus = (state, message) => {
+        if (message) {
+            if (ready) appendSystemMessage(message);
+            else pendingUpdateMessages.push(message);
+        }
+        if (state === 'check-error') {
+            console.warn(message);
+            return;
+        }
+        if (state === 'updated') pycoRestartRequired = true;
+        if (pycoRestartRequired) {
+            statusBar.textContent = 'pyco - restarting...';
+            updateMenuItem.style.display = 'none';
+        } else if (state === 'available' || state === 'update-error') {
+            statusBar.textContent = 'pyco - update available';
+            updateMenuItem.style.display = '';
+        } else {
+            statusBar.textContent = 'pyco';
+            updateMenuItem.style.display = 'none';
+        }
+        updatingPyco = false;
+        updateMenuItem.textContent = 'Update pyco';
+        updateMenuItem.setAttribute('aria-disabled', 'false');
+    };
+
+    updateMenuItem.addEventListener('click', () => {
+        if (updatingPyco || pycoRestartRequired) return;
+        updatingPyco = true;
+        updateMenuItem.textContent = 'Updating pyco...';
+        updateMenuItem.setAttribute('aria-disabled', 'true');
+        window.AndroidPython.updatePyco();
+    });
+
     window.pycoAndroidReady = (jsonResult) => {
         let result;
         try {
@@ -493,6 +544,7 @@
             result = { error: String(error) };
         }
         appendOutput(result.error || result.result || '');
+        pendingUpdateMessages.splice(0).forEach(appendSystemMessage);
         ready = true;
         input.readOnly = false;
         renderInput();
@@ -556,4 +608,5 @@
     }
     const customizationUrl = localStorage.getItem(CUSTOMIZE_KEY) || '';
     window.AndroidPython.initialize(customizationUrl);
+    window.AndroidPython.checkForUpdates();
 })();

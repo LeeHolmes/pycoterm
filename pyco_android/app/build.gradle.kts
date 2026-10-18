@@ -94,8 +94,9 @@ val syncMarkdownRenderer by tasks.registering(Copy::class) {
 val downloadPycoContent by tasks.registering {
     val sourceRoot = "https://raw.githubusercontent.com/LeeHolmes/pyco/main"
     val pycoFile = generatedPythonDir.map { it.file("pyco.py") }
+    val pycoAsset = generatedAssetsDir.map { it.file("pyco.py") }
     val readmeFile = generatedAssetsDir.map { it.file("PYCO_README.md") }
-    outputs.files(pycoFile, readmeFile)
+    outputs.files(pycoFile, pycoAsset, readmeFile)
     outputs.upToDateWhen { false }
 
     doLast {
@@ -104,6 +105,8 @@ val downloadPycoContent by tasks.registering {
             pycoFile.get().asFile,
             "text/x-python,text/plain",
         )
+        pycoAsset.get().asFile.parentFile.mkdirs()
+        pycoFile.get().asFile.copyTo(pycoAsset.get().asFile, overwrite = true)
         val readme = readmeFile.get().asFile
         downloadFile("$sourceRoot/README.md", readme, "text/markdown,text/plain")
     }
